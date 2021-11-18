@@ -619,6 +619,11 @@ public class StreamWriteOperatorCoordinator
   }
 
   @VisibleForTesting
+  public HoodieFlinkWriteClient getWriteClient() {
+    return writeClient;
+  }
+
+  @VisibleForTesting
   public Context getContext() {
     return context;
   }
