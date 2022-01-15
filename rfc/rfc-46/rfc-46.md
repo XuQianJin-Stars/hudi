@@ -65,7 +65,7 @@ statement, spark will rout it to spark’s sql parser. So we just need to implem
 ### resolution
 In the resolution stage, some hoodie resolution rules will be injected to spark sql to resolve our extended LogicalPlan to the resolve plan which is a command plan for `CALL`.
 
-### procedure#run
+### procedure#call
 The Procedure#run method will translate the logical plan to hoodie’s api call. For example the `ShowCommitsProcedure` will translate to hoodie’s api for show commits to hoodie.
 
 ## Rollout/Adoption Plan
