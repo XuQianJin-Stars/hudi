@@ -24,6 +24,7 @@ import org.apache.hudi.hive.util.ConfigUtils
 import org.apache.hudi.sql.InsertMode
 import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType}
+import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project}
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.execution.command.DataWritingCommand
@@ -38,6 +39,7 @@ case class CreateHoodieTableAsSelectCommand(
    table: CatalogTable,
    mode: SaveMode,
    query: LogicalPlan) extends DataWritingCommand {
+  override def innerChildren: Seq[QueryPlan[_]] = Seq(query)
 
   override def run(sparkSession: SparkSession, child: SparkPlan): Seq[Row] = {
     assert(table.tableType != CatalogTableType.VIEW)
