@@ -55,18 +55,21 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
   private final Integer bufferSize;
   private final Short replication;
   private final String rolloverLogWriteToken;
+  final HoodieLogFileWriteCallback logFileWriteCalback;
   private boolean closed = false;
   private transient Thread shutdownThread = null;
 
   private static final String APPEND_UNAVAILABLE_EXCEPTION_MESSAGE = "not sufficiently replicated yet";
 
-  HoodieLogFormatWriter(FileSystem fs, HoodieLogFile logFile, Integer bufferSize, Short replication, Long sizeThreshold, String rolloverLogWriteToken) {
+  HoodieLogFormatWriter(FileSystem fs, HoodieLogFile logFile, Integer bufferSize, Short replication, Long sizeThreshold,
+                        String rolloverLogWriteToken, HoodieLogFileWriteCallback logFileWriteCallback) {
     this.fs = fs;
     this.logFile = logFile;
     this.sizeThreshold = sizeThreshold;
     this.bufferSize = bufferSize;
     this.replication = replication;
     this.rolloverLogWriteToken = rolloverLogWriteToken;
+    this.logFileWriteCalback = logFileWriteCallback;
     addShutDownHook();
   }
 
@@ -98,6 +101,7 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
           LOG.info(logFile + " exists. Appending to existing file");
           try {
             // open the path for append and record the offset
+            logFileWriteCalback.preLogFileOpen(logFile);
             this.output = fs.append(path, bufferSize);
           } catch (RemoteException e) {
             LOG.warn("Remote Exception, attempting to handle or recover lease", e);
@@ -230,6 +234,7 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
   }
 
   private void createNewFile() throws IOException {
+    logFileWriteCalback.preLogFileCreate(logFile);
     this.output =
         fs.create(this.logFile.getPath(), false, bufferSize, replication, WriterBuilder.DEFAULT_SIZE_THRESHOLD, null);
   }
@@ -240,6 +245,7 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
       Runtime.getRuntime().removeShutdownHook(shutdownThread);
     }
     closeStream();
+    logFileWriteCalback.postLogFileClose(logFile);
   }
 
   private void closeStream() throws IOException {

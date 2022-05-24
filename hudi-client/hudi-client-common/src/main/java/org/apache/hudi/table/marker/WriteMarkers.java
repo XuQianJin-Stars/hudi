@@ -56,24 +56,24 @@ public abstract class WriteMarkers implements Serializable {
    * Creates a marker without checking if the marker already exists.
    *
    * @param partitionPath partition path in the table
-   * @param dataFileName data file name
+   * @param fileName data file name
    * @param type  write IO type
    * @return the marker path
    */
-  public Option<Path> create(String partitionPath, String dataFileName, IOType type) {
-    return create(partitionPath, dataFileName, type, false);
+  public Option<Path> create(String partitionPath, String fileName, IOType type) {
+    return create(partitionPath, fileName, type, false);
   }
 
   /**
    * Creates a marker if the marker does not exist.
    *
    * @param partitionPath partition path in the table
-   * @param dataFileName data file name
+   * @param fileName data file name
    * @param type write IO type
    * @return the marker path or empty option if already exists
    */
-  public Option<Path> createIfNotExists(String partitionPath, String dataFileName, IOType type) {
-    return create(partitionPath, dataFileName, type, true);
+  public Option<Path> createIfNotExists(String partitionPath, String fileName, IOType type) {
+    return create(partitionPath, fileName, type, true);
   }
 
   /**
@@ -102,27 +102,27 @@ public abstract class WriteMarkers implements Serializable {
   }
 
   /**
-   * Gets the marker file name, in the format of "[data_file_name].marker.[IO_type]".
+   * Gets the marker file name, in the format of "[file_name].marker.[IO_type]".
    *
-   * @param dataFileName data file name
+   * @param fileName data file name
    * @param type IO type
    * @return the marker file name
    */
-  protected String getMarkerFileName(String dataFileName, IOType type) {
-    return String.format("%s%s.%s", dataFileName, HoodieTableMetaClient.MARKER_EXTN, type.name());
+  protected String getMarkerFileName(String fileName, IOType type) {
+    return String.format("%s%s.%s", fileName, HoodieTableMetaClient.MARKER_EXTN, type.name());
   }
 
   /**
    * Returns the marker path. Would create the partition path first if not exists
    *
    * @param partitionPath The partition path
-   * @param dataFileName  The data file name
+   * @param fileName  The data file name
    * @param type          The IO type
    * @return path of the marker file
    */
-  protected Path getMarkerPath(String partitionPath, String dataFileName, IOType type) {
+  protected Path getMarkerPath(String partitionPath, String fileName, IOType type) {
     Path path = FSUtils.getPartitionPath(markerDirPath, partitionPath);
-    String markerFileName = getMarkerFileName(dataFileName, type);
+    String markerFileName = getMarkerFileName(fileName, type);
     return new Path(path, markerFileName);
   }
 
@@ -159,10 +159,10 @@ public abstract class WriteMarkers implements Serializable {
    * Creates a marker.
    *
    * @param partitionPath  partition path in the table
-   * @param dataFileName  data file name
+   * @param fileName  data file name
    * @param type write IO type
    * @param checkIfExists whether to check if the marker already exists
    * @return the marker path or empty option if already exists and {@code checkIfExists} is true
    */
-  abstract Option<Path> create(String partitionPath, String dataFileName, IOType type, boolean checkIfExists);
+  abstract Option<Path> create(String partitionPath, String fileName, IOType type, boolean checkIfExists);
 }

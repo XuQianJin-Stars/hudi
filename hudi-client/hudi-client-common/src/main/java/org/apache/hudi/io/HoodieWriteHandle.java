@@ -182,9 +182,9 @@ public abstract class HoodieWriteHandle<T extends HoodieRecordPayload, I, K, O> 
    *
    * @param partitionPath Partition path
    */
-  protected void createMarkerFile(String partitionPath, String dataFileName) {
+  protected void createMarkerFile(String partitionPath, String fileName) {
     WriteMarkersFactory.get(config.getMarkersType(), hoodieTable, instantTime)
-        .create(partitionPath, dataFileName, getIOType());
+        .create(partitionPath, fileName, getIOType());
   }
 
   public Schema getWriterSchemaWithMetaFields() {

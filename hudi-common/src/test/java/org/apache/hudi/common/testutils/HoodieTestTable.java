@@ -52,7 +52,6 @@ import org.apache.hudi.common.table.timeline.TimelineMetadataUtils;
 import org.apache.hudi.common.table.timeline.versioning.clean.CleanPlanV2MigrationHandler;
 import org.apache.hudi.common.util.CompactionUtils;
 import org.apache.hudi.common.util.Option;
-import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.exception.HoodieIOException;
@@ -99,8 +98,9 @@ import static org.apache.hudi.common.testutils.FileCreateUtils.createInflightCom
 import static org.apache.hudi.common.testutils.FileCreateUtils.createInflightDeltaCommit;
 import static org.apache.hudi.common.testutils.FileCreateUtils.createInflightReplaceCommit;
 import static org.apache.hudi.common.testutils.FileCreateUtils.createInflightRollbackFile;
-import static org.apache.hudi.common.testutils.FileCreateUtils.createInflightSavepoint;
 import static org.apache.hudi.common.testutils.FileCreateUtils.createMarkerFile;
+import static org.apache.hudi.common.testutils.FileCreateUtils.createInflightSavepoint;
+import static org.apache.hudi.common.testutils.FileCreateUtils.createLogFileMarker;
 import static org.apache.hudi.common.testutils.FileCreateUtils.createReplaceCommit;
 import static org.apache.hudi.common.testutils.FileCreateUtils.createRequestedCleanFile;
 import static org.apache.hudi.common.testutils.FileCreateUtils.createRequestedCommit;
@@ -199,12 +199,6 @@ public class HoodieTestTable {
     createInflightCommit(basePath, instantTime);
     createCommit(basePath, instantTime, metadata);
     currentInstantTime = instantTime;
-    return this;
-  }
-
-  public HoodieTestTable addSavepointCommit(String instantTime, HoodieSavepointMetadata savepointMetadata) throws IOException {
-    createInflightSavepoint(basePath, instantTime);
-    createSavepointCommit(basePath, instantTime, savepointMetadata);
     return this;
   }
 
@@ -409,7 +403,7 @@ public class HoodieTestTable {
 
   public HoodieSavepointMetadata getSavepointMetadata(String instant, Map<String, List<String>> partitionToFilesMeta) {
     HoodieSavepointMetadata savepointMetadata = new HoodieSavepointMetadata();
-    savepointMetadata.setSavepointedAt(12345L);
+    savepointMetadata.setSavepointedAt(Long.valueOf(instant));
     Map<String, HoodieSavepointPartitionMetadata> partitionMetadataMap = new HashMap<>();
     for (Map.Entry<String, List<String>> entry : partitionToFilesMeta.entrySet()) {
       HoodieSavepointPartitionMetadata savepointPartitionMetadata = new HoodieSavepointPartitionMetadata();
@@ -419,7 +413,6 @@ public class HoodieTestTable {
     }
     savepointMetadata.setPartitionMetadata(partitionMetadataMap);
     savepointMetadata.setSavepointedBy("test");
-    savepointMetadata.setComments("test_comment");
     return savepointMetadata;
   }
 
@@ -517,6 +510,11 @@ public class HoodieTestTable {
     for (String fileId : fileIds) {
       createMarkerFile(basePath, partitionPath, currentInstantTime, fileId, ioType);
     }
+    return this;
+  }
+
+  public HoodieTestTable withLogMarkerFile(String partitionPath, String fileId, IOType ioType) throws IOException {
+    createLogFileMarker(basePath, partitionPath, currentInstantTime, fileId, ioType);
     return this;
   }
 
@@ -695,6 +693,7 @@ public class HoodieTestTable {
 
   public FileStatus[] listAllLogFiles(String fileExtension) throws IOException {
     return FileSystemTestUtils.listRecursive(fs, new Path(basePath)).stream()
+        .filter(status -> !status.getPath().toString().contains(HoodieTableMetaClient.METAFOLDER_NAME))
         .filter(status -> status.getPath().getName().contains(fileExtension))
         .toArray(FileStatus[]::new);
   }
@@ -1088,7 +1087,7 @@ public class HoodieTestTable {
             FileCreateUtils.baseFileName(commitTime, fileIdInfo.getKey());
         writeStat.setFileId(fileName);
         writeStat.setPartitionPath(partition);
-        writeStat.setPath(StringUtils.isNullOrEmpty(partition) ? fileName : partition + "/" + fileName);
+        writeStat.setPath(partition + "/" + fileName);
         writeStat.setTotalWriteBytes(fileIdInfo.getValue());
         writeStat.setFileSizeInBytes(fileIdInfo.getValue());
         writeStats.add(writeStat);
@@ -1114,7 +1113,7 @@ public class HoodieTestTable {
             FileCreateUtils.logFileName(commitTime, fileIdInfo.getKey(), fileIdInfo.getValue()[0]);
         writeStat.setFileId(fileName);
         writeStat.setPartitionPath(partition);
-        writeStat.setPath(StringUtils.isNullOrEmpty(partition) ? fileName : partition + "/" + fileName);
+        writeStat.setPath(partition + "/" + fileName);
         writeStat.setTotalWriteBytes(fileIdInfo.getValue()[1]);
         writeStat.setFileSizeInBytes(fileIdInfo.getValue()[1]);
         writeStats.add(writeStat);

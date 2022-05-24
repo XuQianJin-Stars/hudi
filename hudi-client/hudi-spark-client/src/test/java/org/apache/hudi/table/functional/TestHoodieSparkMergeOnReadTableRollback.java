@@ -40,7 +40,6 @@ import org.apache.hudi.common.table.view.HoodieTableFileSystemView;
 import org.apache.hudi.common.table.view.SyncableFileSystemView;
 import org.apache.hudi.common.table.view.TableFileSystemView;
 import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
-import org.apache.hudi.common.testutils.HoodieTestTable;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieCleanConfig;
@@ -987,16 +986,4 @@ public class TestHoodieSparkMergeOnReadTableRollback extends SparkClientFunction
             .build());
     return cfgBuilder.build();
   }
-
-  private SyncableFileSystemView getFileSystemViewWithUnCommittedSlices(HoodieTableMetaClient metaClient) {
-    try {
-      return new HoodieTableFileSystemView(metaClient,
-          metaClient.getActiveTimeline(),
-          HoodieTestTable.of(metaClient).listAllBaseAndLogFiles()
-      );
-    } catch (IOException ioe) {
-      throw new HoodieIOException("Error getting file system view", ioe);
-    }
-  }
-
 }

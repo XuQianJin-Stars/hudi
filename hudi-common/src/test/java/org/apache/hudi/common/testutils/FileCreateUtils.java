@@ -30,6 +30,7 @@ import org.apache.hudi.avro.model.HoodieSavepointMetadata;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieFileFormat;
+import org.apache.hudi.common.model.HoodieLogFile;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
 import org.apache.hudi.common.model.HoodieReplaceCommitMetadata;
 import org.apache.hudi.common.model.IOType;
@@ -99,6 +100,15 @@ public class FileCreateUtils {
 
   public static String markerFileName(String instantTime, String fileId, IOType ioType, String fileExtension) {
     return String.format("%s_%s_%s%s%s.%s", fileId, WRITE_TOKEN, instantTime, fileExtension, HoodieTableMetaClient.MARKER_EXTN, ioType);
+  }
+  
+  public static String logFileMarkerFileName(String instantTime, String fileId, IOType ioType, int logVersion) {
+    return logFileMarkerFileName(instantTime, fileId, ioType, HoodieLogFile.DELTA_EXTENSION, logVersion);
+  }
+
+  public static String logFileMarkerFileName(String instantTime, String fileId, IOType ioType, String fileExtension, int logVersion) {
+    return String.format("%s%s.%s", FSUtils.makeLogFileName(fileId, fileExtension, instantTime, logVersion, WRITE_TOKEN),
+        HoodieTableMetaClient.MARKER_EXTN, ioType.name());
   }
 
   private static void createMetaFile(String basePath, String instantTime, String suffix, FileSystem fs) throws IOException {
@@ -352,6 +362,22 @@ public class FileCreateUtils {
     Path parentPath = Paths.get(basePath, HoodieTableMetaClient.TEMPFOLDER_NAME, instantTime, partitionPath);
     Files.createDirectories(parentPath);
     Path markerFilePath = parentPath.resolve(markerFileName(instantTime, fileId, ioType));
+    if (Files.notExists(markerFilePath)) {
+      Files.createFile(markerFilePath);
+    }
+    return markerFilePath.toAbsolutePath().toString();
+  }
+
+  public static String createLogFileMarker(String basePath, String partitionPath, String instantTime, String fileId, IOType ioType)
+      throws IOException {
+    return createLogFileMarker(basePath, partitionPath, instantTime, fileId, ioType, HoodieLogFile.LOGFILE_BASE_VERSION);
+  }
+
+  public static String createLogFileMarker(String basePath, String partitionPath, String instantTime, String fileId, IOType ioType, int logVersion)
+      throws IOException {
+    Path parentPath = Paths.get(basePath, HoodieTableMetaClient.TEMPFOLDER_NAME, instantTime, partitionPath);
+    Files.createDirectories(parentPath);
+    Path markerFilePath = parentPath.resolve(logFileMarkerFileName(instantTime, fileId, ioType, logVersion));
     if (Files.notExists(markerFilePath)) {
       Files.createFile(markerFilePath);
     }

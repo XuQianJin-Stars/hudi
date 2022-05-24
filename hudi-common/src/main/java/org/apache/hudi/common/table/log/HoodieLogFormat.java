@@ -143,6 +143,8 @@ public interface HoodieLogFormat {
     private String logWriteToken;
     // Rollover Log file write token
     private String rolloverLogWriteToken;
+    // A call back triggered with log file operation
+    private HoodieLogFileWriteCallback logFileWriteCallback;
 
     public WriterBuilder withBufferSize(int bufferSize) {
       this.bufferSize = bufferSize;
@@ -194,6 +196,11 @@ public interface HoodieLogFormat {
       return this;
     }
 
+    public WriterBuilder withLogWriteCallback(HoodieLogFileWriteCallback logFileWriteCallback) {
+      this.logFileWriteCallback = logFileWriteCallback;
+      return this;
+    }
+
     public WriterBuilder withFileSize(long fileLen) {
       this.fileLen = fileLen;
       return this;
@@ -224,6 +231,10 @@ public interface HoodieLogFormat {
 
       if (rolloverLogWriteToken == null) {
         rolloverLogWriteToken = UNKNOWN_WRITE_TOKEN;
+      }
+
+      if (logFileWriteCallback == null) {
+        logFileWriteCallback = new DefaultHoodieLogFileWriteCallBack();
       }
 
       if (logVersion == null) {
@@ -264,7 +275,8 @@ public interface HoodieLogFormat {
       if (sizeThreshold == null) {
         sizeThreshold = DEFAULT_SIZE_THRESHOLD;
       }
-      return new HoodieLogFormatWriter(fs, logFile, bufferSize, replication, sizeThreshold, rolloverLogWriteToken);
+      return new HoodieLogFormatWriter(fs, logFile, bufferSize, replication, sizeThreshold,
+          rolloverLogWriteToken, logFileWriteCallback);
     }
   }
 

@@ -18,6 +18,11 @@
 
 package org.apache.hudi.table;
 
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificRecordBase;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieCleanMetadata;
 import org.apache.hudi.avro.model.HoodieCleanerPlan;
@@ -41,6 +46,7 @@ import org.apache.hudi.common.fs.ConsistencyGuard.FileVisibility;
 import org.apache.hudi.common.fs.ConsistencyGuardConfig;
 import org.apache.hudi.common.fs.FailSafeConsistencyGuard;
 import org.apache.hudi.common.fs.OptimisticConsistencyGuard;
+import org.apache.hudi.common.model.HoodieDeltaWriteStat;
 import org.apache.hudi.common.model.HoodieFileFormat;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecordPayload;
@@ -78,12 +84,6 @@ import org.apache.hudi.table.marker.WriteMarkers;
 import org.apache.hudi.table.marker.WriteMarkersFactory;
 import org.apache.hudi.table.storage.HoodieLayoutFactory;
 import org.apache.hudi.table.storage.HoodieStorageLayout;
-
-import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificRecordBase;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
@@ -615,7 +615,7 @@ public abstract class HoodieTable<T extends HoodieRecordPayload, I, K, O> implem
   /**
    * Returns the possible invalid data file name with given marker files.
    */
-  protected Set<String> getInvalidDataPaths(WriteMarkers markers) throws IOException {
+  protected Set<String> getInvalidFilePaths(WriteMarkers markers) throws IOException {
     return markers.createdAndMergedDataPaths(context, config.getFinalizeWriteParallelism());
   }
 
@@ -644,19 +644,27 @@ public abstract class HoodieTable<T extends HoodieRecordPayload, I, K, O> implem
         return;
       }
 
-      // we are not including log appends here, since they are already fail-safe.
-      Set<String> invalidDataPaths = getInvalidDataPaths(markers);
+      // we are not including log appends for update here, since they are already fail-safe.
+      // but log files created for a new file group is included
+      Set<String> invalidFilePaths = getInvalidFilePaths(markers);
       Set<String> validDataPaths = stats.stream()
           .map(HoodieWriteStat::getPath)
           .filter(p -> p.endsWith(this.getBaseFileExtension()))
           .collect(Collectors.toSet());
+      // see {@link HoodieAppendHandle}
+      Set<String> validLogFileForNewFileGroupPaths = stats.stream()
+          // filter writeStat for delta log
+          .filter(stat -> stat instanceof HoodieDeltaWriteStat)
+          .map(stat -> (HoodieDeltaWriteStat) stat)
+          .map(HoodieWriteStat::getPath)
+          .collect(Collectors.toSet());
 
       // Contains list of partially created files. These needs to be cleaned up.
-      invalidDataPaths.removeAll(validDataPaths);
-
-      if (!invalidDataPaths.isEmpty()) {
-        LOG.info("Removing duplicate data files created due to task retries before committing. Paths=" + invalidDataPaths);
-        Map<String, List<Pair<String, String>>> invalidPathsByPartition = invalidDataPaths.stream()
+      invalidFilePaths.removeAll(validDataPaths);
+      invalidFilePaths.removeAll(validLogFileForNewFileGroupPaths);
+      if (!invalidFilePaths.isEmpty()) {
+        LOG.info("Removing invalid files created due to spark retries before committing. Paths=" + invalidFilePaths);
+        Map<String, List<Pair<String, String>>> invalidPathsByPartition = invalidFilePaths.stream()
             .map(dp -> Pair.of(new Path(basePath, dp).getParent().toString(), new Path(basePath, dp).toString()))
             .collect(Collectors.groupingBy(Pair::getKey));
 
