@@ -54,7 +54,7 @@ public abstract class HoodieDirectMarkerBasedEarlyConflictDetectionStrategy impl
    * @throws IOException
    */
   public boolean checkMarkerConflict(String basePath, String partitionPath, String fileId,
-                                     FileSystem fs, String instantTime) throws IOException {
+                                      FileSystem fs, String instantTime) throws IOException {
     String tempFolderPath = getTempFolderPath(basePath);
     long res = Arrays.stream(fs.listStatus(new Path(tempFolderPath)))
         .parallel()
