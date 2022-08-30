@@ -38,6 +38,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import static org.apache.hudi.common.model.WriteConcurrencyMode.SINGLE_WRITER;
+
 /**
  * A stream write function with bucket hash index.
  *
@@ -56,6 +58,8 @@ public class BucketStreamWriteFunction<I> extends StreamWriteFunction<I> {
   private int bucketNum;
 
   private String indexKeyFields;
+
+  private String concurrencyMode;
 
   /**
    * BucketID to file group mapping in each partition.
@@ -84,6 +88,7 @@ public class BucketStreamWriteFunction<I> extends StreamWriteFunction<I> {
     super.open(parameters);
     this.bucketNum = config.getInteger(FlinkOptions.BUCKET_INDEX_NUM_BUCKETS);
     this.indexKeyFields = config.getString(FlinkOptions.INDEX_KEY_FIELD);
+    this.concurrencyMode = config.getString(FlinkOptions.WRITE_CONCURRENCY_MODE);
     this.taskID = getRuntimeContext().getIndexOfThisSubtask();
     this.parallelism = getRuntimeContext().getNumberOfParallelSubtasks();
     this.bucketIndex = new HashMap<>();
@@ -156,12 +161,14 @@ public class BucketStreamWriteFunction<I> extends StreamWriteFunction<I> {
       int bucketNumber = BucketIdentifier.bucketIdFromFileId(fileID);
       if (isBucketToLoad(bucketNumber, partition)) {
         LOG.info(String.format("Should load this partition bucket %s with fileID %s", bucketNumber, fileID));
-        if (bucketToFileIDMap.containsKey(bucketNumber)) {
+        if (bucketToFileIDMap.containsKey(bucketNumber) && this.concurrencyMode.equals(SINGLE_WRITER.name())) {
           throw new RuntimeException(String.format("Duplicate fileID %s from bucket %s of partition %s found "
               + "during the BucketStreamWriteFunction index bootstrap.", fileID, bucketNumber, partition));
         } else {
-          LOG.info(String.format("Adding fileID %s to the bucket %s of partition %s.", fileID, bucketNumber, partition));
-          bucketToFileIDMap.put(bucketNumber, fileID);
+          if (!bucketToFileIDMap.containsKey(bucketNumber)) {
+            LOG.info(String.format("Adding fileID %s to the bucket %s of partition %s.", fileID, bucketNumber, partition));
+            bucketToFileIDMap.put(bucketNumber, fileID);
+          }
         }
       }
     });

@@ -25,6 +25,7 @@ import org.apache.hudi.common.config.HoodieConfig;
 import org.apache.hudi.common.model.HoodieCleaningPolicy;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.model.OverwriteWithLatestAvroPayload;
+import org.apache.hudi.common.model.WriteConcurrencyMode;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
@@ -440,6 +441,12 @@ public class FlinkOptions extends HoodieConfig {
       .defaultValue(1024L)
       .withDescription("Maximum size allowed in MB for a log file before it is rolled over to the next version, default 1GB");
 
+  public static final ConfigOption<String> WRITE_LOG_SUFFIX = ConfigOptions
+      .key(HoodieWriteConfig.WRITE_LOG_SUFFIX_VALUE.key())
+      .stringType()
+      .defaultValue("")
+      .withDescription("Distinguish the log files written by different jobs by suffixes");
+
   public static final ConfigOption<Integer> WRITE_PARQUET_BLOCK_SIZE = ConfigOptions
       .key("write.parquet.block.size")
       .intType()
@@ -492,6 +499,16 @@ public class FlinkOptions extends HoodieConfig {
       .intType()
       .defaultValue(128)
       .withDescription("Sort memory in MB, default 128MB");
+
+
+  public static final ConfigOption<String> WRITE_CONCURRENCY_MODE = ConfigOptions
+      .key(HoodieWriteConfig.WRITE_CONCURRENCY_MODE.key())
+      .stringType()
+      .defaultValue(WriteConcurrencyMode.SINGLE_WRITER.name())
+      .withDescription("Enable different concurrency modes. Options are "
+          + "SINGLE_WRITER: Only one active writer to the table. Maximizes throughput"
+          + "OPTIMISTIC_CONCURRENCY_CONTROL: Multiple writers can operate on the table and exactly one of them succeed "
+          + "if a conflict (writes affect the same file group) is detected.");
 
   // ------------------------------------------------------------------------
   //  Compaction Options
@@ -578,6 +595,14 @@ public class FlinkOptions extends HoodieConfig {
       .defaultValue(30)// default 30 commits
       .withDescription("Number of commits to retain. So data will be retained for num_of_commits * time_between_commits (scheduled).\n"
           + "This also directly translates into how much you can incrementally pull on this table, default 30");
+
+  public static final ConfigOption<Integer> CLEAN_RETAIN_HOURS = ConfigOptions
+          .key("clean.retain_hours")
+          .intType()
+          .defaultValue(24)// default 24 hours
+          .withDescription("Number of hours for which commits need to be retained. This config provides a more flexible option as"
+                  + "compared to number of commits retained for cleaning service. Setting this property ensures all the files, but the latest in a file group,"
+                  + " corresponding to commits with commit times older than the configured number of hours to be retained are cleaned.");
 
   public static final ConfigOption<Integer> CLEAN_RETAIN_FILE_VERSIONS = ConfigOptions
       .key("clean.retain_file_versions")

@@ -133,7 +133,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
     super(config, instantTime, partitionPath, fileId, hoodieTable, taskContextSupplier);
     this.fileId = fileId;
     this.recordItr = recordItr;
-    sizeEstimator = new DefaultSizeEstimator();
+    this.sizeEstimator = new DefaultSizeEstimator();
     this.statuses = new ArrayList<>();
     this.recordProperties.putAll(config.getProps());
     this.writeMarkers = WriteMarkersFactory.get(config.getMarkersType(), hoodieTable, instantTime);
@@ -172,7 +172,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
         baseInstantTime = instantTime;
         // This means there is no base data file, start appending to a new log file
         fileSlice = Option.of(new FileSlice(partitionPath, baseInstantTime, this.fileId));
-        LOG.info("New AppendHandle for partition :" + partitionPath);
+        LOG.info("New AppendHandle for partition :" + partitionPath + " baseInstantTime :" + baseInstantTime + " fileId :" + this.fileId);
       }
 
       // Prepare the first write status
@@ -492,6 +492,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
         .withRolloverLogWriteToken(writeToken)
         .withLogWriteToken(latestLogFile.map(x -> FSUtils.getWriteTokenFromLogPath(x.getPath())).orElse(writeToken))
         .withLogWriteCallback(new AppendLogWriteCallback())
+        .withLogSuffix(config.getWriteLogSuffix())
         .withFileExtension(HoodieLogFile.DELTA_EXTENSION).build();
   }
 
@@ -570,6 +571,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
                                          List<IndexedRecord> recordList,
                                          Map<HeaderMetadataType, String> header,
                                          String keyField) {
+    LOG.info("getBlock recordList's size => " + recordList.size());
     switch (logDataBlockFormat) {
       case AVRO_DATA_BLOCK:
         return new HoodieAvroDataBlock(recordList, header, keyField);

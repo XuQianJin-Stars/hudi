@@ -68,7 +68,9 @@ public class HoodieInstant implements Serializable, Comparable<HoodieInstant> {
     // Committed instant
     COMPLETED,
     // Invalid instant
-    INVALID
+    INVALID,
+    // Canceled instant
+    CANCELED,
   }
 
   private State state = State.COMPLETED;
@@ -123,6 +125,10 @@ public class HoodieInstant implements Serializable, Comparable<HoodieInstant> {
 
   public boolean isRequested() {
     return state == State.REQUESTED;
+  }
+
+  public boolean isCanceled() {
+    return state == State.CANCELED;
   }
 
   public String getAction() {

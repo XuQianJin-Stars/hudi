@@ -18,12 +18,14 @@
 
 package org.apache.hudi.common.table.timeline;
 
+import org.apache.hadoop.fs.Path;
 import org.apache.hudi.avro.model.HoodieCleanMetadata;
 import org.apache.hudi.avro.model.HoodieRestoreMetadata;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieReplaceCommitMetadata;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.util.CommitUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.exception.HoodieIOException;
 import org.apache.log4j.LogManager;
@@ -33,6 +35,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -148,6 +151,25 @@ public class TimelineUtils {
   public static Map<String, Option<String>> getAllExtraMetadataForKey(HoodieTableMetaClient metaClient, String extraMetadataKey) {
     return metaClient.getCommitsTimeline().filterCompletedInstants().getReverseOrderedInstants().collect(Collectors.toMap(
           HoodieInstant::getTimestamp, instant -> getMetadataValue(metaClient, extraMetadataKey, instant)));
+  }
+
+  public static void createCanceledCommitFile(HoodieTableMetaClient metaClient, String instantTime) throws IOException {
+    HoodieInstant canceledInstant =
+        new HoodieInstant(HoodieInstant.State.CANCELED, CommitUtils.getCommitActionType(metaClient.getTableType()), instantTime);
+    Path canceledPath = new Path(metaClient.getMetaPath(),
+        canceledInstant.getFileName() + "." + HoodieInstant.State.CANCELED.name().toLowerCase(Locale.ROOT));
+    if (!metaClient.getFs().exists(canceledPath)) {
+      // revert if in inflight state
+      metaClient.getFs().create(canceledPath, true);
+    }
+  }
+
+  public static boolean isCanceledCommitFile(HoodieTableMetaClient metaClient, String instantTime) throws IOException {
+    HoodieInstant canceledInstant =
+        new HoodieInstant(HoodieInstant.State.CANCELED, CommitUtils.getCommitActionType(metaClient.getTableType()), instantTime);
+    Path canceledPath = new Path(metaClient.getMetaPath(),
+        canceledInstant.getFileName() + "." + HoodieInstant.State.CANCELED.name().toLowerCase(Locale.ROOT));
+    return metaClient.getFs().exists(canceledPath);
   }
 
   private static Option<String> getMetadataValue(HoodieTableMetaClient metaClient, String extraMetadataKey, HoodieInstant instant) {

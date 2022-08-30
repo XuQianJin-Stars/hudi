@@ -97,7 +97,8 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
       Path path = logFile.getPath();
       if (fs.exists(path)) {
         boolean isAppendSupported = StorageSchemes.isAppendSupported(fs.getScheme());
-        if (isAppendSupported) {
+        boolean needRollOverToNewFile = fs.getFileStatus(path).getLen() > sizeThreshold;
+        if (isAppendSupported && !needRollOverToNewFile) {
           LOG.info(logFile + " exists. Appending to existing file");
           try {
             // open the path for append and record the offset
@@ -120,10 +121,13 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
             }
           }
         }
-        if (!isAppendSupported) {
+        if (!isAppendSupported || needRollOverToNewFile) {
+          LOG.info(logFile + " roll over. Create a new file");
           rollOver();
           createNewFile();
-          LOG.info("Append not supported.. Rolling over to " + logFile);
+          if (isAppendSupported && needRollOverToNewFile) {
+            LOG.info(String.format("current Log file size > %s roll over to a new log file", sizeThreshold));
+          }
         }
       } else {
         LOG.info(logFile + " does not exist. Create a new file");
@@ -229,7 +233,7 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
 
   private void rollOver() throws IOException {
     closeStream();
-    this.logFile = logFile.rollOver(fs, rolloverLogWriteToken);
+    this.logFile = logFile.rollOver(fs, rolloverLogWriteToken, logFile.getLogSuffix());
     this.closed = false;
   }
 
@@ -251,6 +255,7 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
   private void closeStream() throws IOException {
     if (output != null) {
       flush();
+      LOG.info("close the output.");
       output.close();
       output = null;
       closed = true;
@@ -261,6 +266,7 @@ public class HoodieLogFormatWriter implements HoodieLogFormat.Writer {
     if (output == null) {
       return; // Presume closed
     }
+    LOG.info("Flush all blocks to disk.");
     output.flush();
     // NOTE : the following API call makes sure that the data is flushed to disk on DataNodes (akin to POSIX fsync())
     // See more details here : https://issues.apache.org/jira/browse/HDFS-744

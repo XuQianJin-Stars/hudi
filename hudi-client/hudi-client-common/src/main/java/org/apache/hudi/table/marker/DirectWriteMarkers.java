@@ -171,7 +171,7 @@ public class DirectWriteMarkers extends WriteMarkers {
         return Option.empty();
       }
       LOG.info("Creating Marker Path=" + markerPath);
-      fs.create(markerPath, false).close();
+      fs.create(markerPath, true).close();
     } catch (IOException e) {
       throw new HoodieException("Failed to create marker file " + markerPath, e);
     }

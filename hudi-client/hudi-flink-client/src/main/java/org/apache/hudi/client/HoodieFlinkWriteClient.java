@@ -595,6 +595,13 @@ public class HoodieFlinkWriteClient<T extends HoodieRecordPayload> extends
     return writeHandle;
   }
 
+  public void transitionRequestedToInflight(String commitType, String inFlightInstant) {
+    HoodieActiveTimeline activeTimeline = FlinkClientUtil.createMetaClient(basePath).getActiveTimeline();
+    HoodieInstant requested = new HoodieInstant(HoodieInstant.State.REQUESTED, commitType, inFlightInstant);
+    activeTimeline.transitionRequestedToInflight(requested, Option.empty(),
+        config.shouldAllowMultiWriteOnSameInstant());
+  }
+
   public HoodieFlinkTable<T> getHoodieTable() {
     return HoodieFlinkTable.create(config, (HoodieFlinkEngineContext) context);
   }

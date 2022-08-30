@@ -24,7 +24,10 @@ import org.apache.hudi.common.config.SerializableConfiguration;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
+import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
+import org.apache.hudi.common.table.timeline.TimelineUtils;
 import org.apache.hudi.common.util.CommitUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ValidationUtils;
@@ -53,6 +56,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -65,6 +69,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 
+import static org.apache.hudi.common.model.WriteConcurrencyMode.SINGLE_WRITER;
 import static org.apache.hudi.util.StreamerUtil.initTableIfNotExists;
 
 /**
@@ -152,6 +157,8 @@ public class StreamWriteOperatorCoordinator
    */
   private CkpMetadata ckpMetadata;
 
+  private String concurrencyMode;
+
   /**
    * Constructs a StreamingSinkOperatorCoordinator.
    *
@@ -165,6 +172,7 @@ public class StreamWriteOperatorCoordinator
     this.context = context;
     this.parallelism = context.currentParallelism();
     this.hiveConf = new SerializableConfiguration(HadoopConfigurations.getHiveConf(conf));
+    this.concurrencyMode = conf.getString(FlinkOptions.WRITE_CONCURRENCY_MODE);
   }
 
   @Override
@@ -437,10 +445,11 @@ public class StreamWriteOperatorCoordinator
     // the write task does not block after checkpointing(and before it receives a checkpoint success event),
     // if it checkpoints succeed then flushes the data buffer again before this coordinator receives a checkpoint
     // success event, the data buffer would flush with an older instant time.
-    ValidationUtils.checkState(
-        HoodieTimeline.compareTimestamps(this.instant, HoodieTimeline.GREATER_THAN_OR_EQUALS, event.getInstantTime()),
-        String.format("Receive an unexpected event for instant %s from task %d",
-            event.getInstantTime(), event.getTaskID()));
+    if (HoodieTimeline.compareTimestamps(this.instant, HoodieTimeline.GREATER_THAN_OR_EQUALS, event.getInstantTime())
+        && this.concurrencyMode.equals(SINGLE_WRITER.name())) {
+      ValidationUtils.checkState(true, String.format("Receive an unexpected event for instant %s from task %d",
+          event.getInstantTime(), event.getTaskID()));
+    }
 
     addEventToBuffer(event);
   }
@@ -516,6 +525,7 @@ public class StreamWriteOperatorCoordinator
     long totalErrorRecords = writeResults.stream().map(WriteStatus::getTotalErrorRecords).reduce(Long::sum).orElse(0L);
     long totalRecords = writeResults.stream().map(WriteStatus::getTotalRecords).reduce(Long::sum).orElse(0L);
     boolean hasErrors = totalErrorRecords > 0;
+    final String commitInstant = getCommitInstantTime(instant);
 
     if (!hasErrors || this.conf.getBoolean(FlinkOptions.IGNORE_FAILED)) {
       HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
@@ -527,14 +537,15 @@ public class StreamWriteOperatorCoordinator
       final Map<String, List<String>> partitionToReplacedFileIds = tableState.isOverwrite
           ? writeClient.getPartitionToReplacedFileIds(tableState.operationType, writeResults)
           : Collections.emptyMap();
-      boolean success = writeClient.commit(instant, writeResults, Option.of(checkpointCommitMetadata),
+
+      boolean success = writeClient.commit(commitInstant, writeResults, Option.of(checkpointCommitMetadata),
           tableState.commitAction, partitionToReplacedFileIds);
       if (success) {
         reset();
-        this.ckpMetadata.commitInstant(instant);
-        LOG.info("Commit instant [{}] success!", instant);
+        this.ckpMetadata.commitInstant(commitInstant);
+        LOG.info("Commit instant [{}] success!", commitInstant);
       } else {
-        throw new HoodieException(String.format("Commit instant [%s] failed!", instant));
+        throw new HoodieException(String.format("Commit instant [%s] failed!", commitInstant));
       }
     } else {
       LOG.error("Error when writing. Errors/Total=" + totalErrorRecords + "/" + totalRecords);
@@ -547,8 +558,53 @@ public class StreamWriteOperatorCoordinator
         }
       });
       // Rolls back instant
-      writeClient.rollback(instant);
-      throw new HoodieException(String.format("Commit instant [%s] failed and rolled back !", instant));
+      writeClient.rollback(commitInstant);
+      throw new HoodieException(String.format("Commit instant [%s] failed and rolled back !", commitInstant));
+    }
+  }
+
+  public String getCommitInstantTime(String instant) {
+    long high = 0;
+    long low = 0;
+
+    // reload active timelie
+    HoodieActiveTimeline hoodieActiveTimeline = metaClient.reloadActiveTimeline();
+
+    Option<HoodieInstant> maxPendingInstant = metaClient.getCommitsTimeline()
+        .filterPendingExcludingCompaction().firstInstant();
+    Option<HoodieInstant> maxCompleteInstant = metaClient.getActiveTimeline().getWriteTimeline()
+        .filterCompletedAndCompactionInstants().lastInstant();
+
+    try {
+      long currentInstant = HoodieActiveTimeline.parseDateFromInstantTime(instant).getTime();
+      if (maxPendingInstant.isPresent()) {
+        String maxPendingTimestamp = maxPendingInstant.get().getTimestamp();
+        high = HoodieActiveTimeline.parseDateFromInstantTime(maxPendingTimestamp).getTime();
+      }
+      if (maxCompleteInstant.isPresent()) {
+        String maxCompleteTimestamp = maxCompleteInstant.get().getTimestamp();
+        low = HoodieActiveTimeline.parseDateFromInstantTime(maxCompleteTimestamp).getTime();
+      }
+
+      if (currentInstant < Math.max(high, low)) {
+        LOG.warn("Instant [" + instant + "] should have the newer timestamp");
+
+        hoodieActiveTimeline.deleteInstantFileIfExists(
+            new HoodieInstant(HoodieInstant.State.REQUESTED, tableState.commitAction, instant));
+        hoodieActiveTimeline.deleteInstantFileIfExists(
+            new HoodieInstant(HoodieInstant.State.INFLIGHT, tableState.commitAction, instant));
+
+        // backup canceled commit by file
+        TimelineUtils.createCanceledCommitFile(metaClient, instant);
+
+        startInstant();
+        LOG.warn("before Instant [" + instant + "] current Instant [" + this.instant + "]");
+      }
+      return this.instant;
+    } catch (ParseException e) {
+      throw new HoodieException("Get commit instant time with interval [" + instant + "] error", e);
+    } catch (IOException e) {
+      throw new HoodieException("IOException [" + instant + "] error", e);
     }
   }
 

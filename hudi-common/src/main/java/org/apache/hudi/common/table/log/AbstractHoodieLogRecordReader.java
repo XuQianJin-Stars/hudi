@@ -34,6 +34,7 @@ import org.apache.hudi.common.table.log.block.HoodieHFileDataBlock;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock;
 import org.apache.hudi.common.table.log.block.HoodieParquetDataBlock;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
+import org.apache.hudi.common.table.timeline.TimelineUtils;
 import org.apache.hudi.common.util.ClosableIterator;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.SpillableMapUtils;
@@ -239,11 +240,15 @@ public abstract class AbstractHoodieLogRecordReader {
           if (!completedInstantsTimeline.containsOrBeforeTimelineStarts(instantTime)
               || inflightInstantsTimeline.containsInstant(instantTime)) {
             // hit an uncommitted block possibly from a failed write, move to the next one and skip processing this one
-            continue;
+            if (!TimelineUtils.isCanceledCommitFile(hoodieTableMetaClient, instantTime)) {
+              continue;
+            }
           }
           if (instantRange.isPresent() && !instantRange.get().isInRange(instantTime)) {
             // filter the log block by instant range
-            continue;
+            if (!TimelineUtils.isCanceledCommitFile(hoodieTableMetaClient, instantTime)) {
+              continue;
+            }
           }
         }
         switch (logBlock.getBlockType()) {
