@@ -58,6 +58,10 @@ public class OverwriteNonDefaultsWithLatestAvroPayload extends OverwriteWithLate
     GenericRecord insertRecord = (GenericRecord) recordOption.get();
     GenericRecord currentRecord = (GenericRecord) currentValue;
 
+    return getMergedIndexedRecordOption(schema, insertRecord, currentRecord);
+  }
+
+  protected Option<IndexedRecord> getMergedIndexedRecordOption(Schema schema, GenericRecord insertRecord, GenericRecord currentRecord) {
     if (isDeleteRecord(insertRecord)) {
       return Option.empty();
     } else {
