@@ -490,6 +490,25 @@ public class HoodieAvroUtils {
     return StringUtils.objToString(obj);
   }
 
+  public static Object getNestedFieldValAsString(GenericRecord record, String fieldName) {
+    Object obj = getNestedFieldVal(record, fieldName, true, false);
+    return obj == null ? "" : StringUtils.objToString(obj);
+  }
+
+  public static Object getMultipleNestedFieldVals(GenericRecord record, String fieldMappings, boolean consistentLogicalTimestampEnabled) {
+    StringBuilder sb = new StringBuilder();
+    for (String fieldMapping: fieldMappings.split(";")) {
+      sb.append(fieldMapping).append("=");
+      String field = fieldMapping.split(":")[0];
+      Object val = getNestedFieldVal(record, field, true, consistentLogicalTimestampEnabled);
+      if (val != null) {
+        sb.append(val);
+      }
+      sb.append(";");
+    }
+    return sb.toString();
+  }
+
   /**
    * Obtain value of the provided field, denoted by dot notation. e.g: a.b.c
    */

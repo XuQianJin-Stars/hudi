@@ -203,10 +203,23 @@ object HoodieOptionConfig {
     }
 
     // validate preCombine key
-    val preCombineKey = sqlOptions.get(SQL_KEY_PRECOMBINE_FIELD.sqlKeyName)
-    if (preCombineKey.isDefined && preCombineKey.get.nonEmpty) {
-      ValidationUtils.checkArgument(schema.exists(f => resolver(f.name, getRootLevelFieldName(preCombineKey.get))),
-        s"Can't find preCombineKey `${preCombineKey.get}` in ${schema.treeString}.")
+    def valPreCombineKey(preCombineKey: String): Unit = {
+      ValidationUtils.checkArgument(schema.exists(f => resolver(f.name, getRootLevelFieldName(preCombineKey))),
+        s"Can't find preCombineKey `${preCombineKey}` in ${schema.treeString}.")
+    }
+
+    val preCombineKeysOpt = sqlOptions.get(SQL_KEY_PRECOMBINE_FIELD.sqlKeyName)
+    if (preCombineKeysOpt.isDefined && preCombineKeysOpt.get.nonEmpty) {
+      val preCombineKeys = preCombineKeysOpt.get
+      if (preCombineKeys.contains(";")) {
+        // preCombineKey in multi ordering field support format
+        preCombineKeys.split(";").foreach(keyMapping => {
+          val preCombineKey = keyMapping.split(":")(0)
+          valPreCombineKey(preCombineKey)
+        })
+      } else {
+        valPreCombineKey(preCombineKeys)
+      }
     }
 
     // validate table type

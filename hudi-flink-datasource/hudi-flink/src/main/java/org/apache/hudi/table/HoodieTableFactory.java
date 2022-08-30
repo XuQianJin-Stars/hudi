@@ -149,7 +149,16 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
       }
       if (preCombineField.equals(FlinkOptions.PRECOMBINE_FIELD.defaultValue())) {
         conf.setString(FlinkOptions.PRECOMBINE_FIELD, FlinkOptions.NO_PRE_COMBINE);
-      } else {
+      } else if (preCombineField.contains(";")) {
+        // pre_combine key is in multi_ordering format (e.g. _ts1:name1,price1;_ts2:name2,price2)
+        Arrays.stream(preCombineField.split(";"))
+            .filter(f -> !fields.contains(f.split(":")[0]))
+            .findAny()
+            .ifPresent(f -> {
+              throw new HoodieValidationException("Field " + preCombineField + " does not exist in the table schema."
+                  + "Please check '" + FlinkOptions.PRECOMBINE_FIELD.key() + "' option.");
+            });
+      } else if (!preCombineField.equals(FlinkOptions.NO_PRE_COMBINE)) {
         throw new HoodieValidationException("Field " + preCombineField + " does not exist in the table schema."
             + "Please check '" + FlinkOptions.PRECOMBINE_FIELD.key() + "' option.");
       }

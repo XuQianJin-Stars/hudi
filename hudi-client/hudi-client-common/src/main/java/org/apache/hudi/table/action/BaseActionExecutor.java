@@ -36,7 +36,7 @@ public abstract class BaseActionExecutor<T extends HoodieRecordPayload, I, K, O,
   protected final transient HoodieEngineContext context;
   protected final transient Configuration hadoopConf;
 
-  protected final HoodieWriteConfig config;
+  public final HoodieWriteConfig config;
 
   protected final HoodieTable<T, I, K, O> table;
 
