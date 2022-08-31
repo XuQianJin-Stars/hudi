@@ -55,6 +55,7 @@ class ShowCommitsProcedure(includeExtraMetadata: Boolean) extends BaseProcedure 
     StructField("action", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("partition", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("file_id", DataTypes.StringType, nullable = true, Metadata.empty),
+    StructField("path", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("previous_commit", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("num_writes", DataTypes.LongType, nullable = true, Metadata.empty),
     StructField("num_inserts", DataTypes.LongType, nullable = true, Metadata.empty),
@@ -106,7 +107,7 @@ class ShowCommitsProcedure(includeExtraMetadata: Boolean) extends BaseProcedure 
         for (hoodieWriteStat <- partitionWriteStat.getValue) {
           rows.add(Row(
             commit.getTimestamp, commit.getAction, hoodieWriteStat.getPartitionPath,
-            hoodieWriteStat.getFileId, hoodieWriteStat.getPrevCommit, hoodieWriteStat.getNumWrites,
+            hoodieWriteStat.getFileId, hoodieWriteStat.getPath, hoodieWriteStat.getPrevCommit, hoodieWriteStat.getNumWrites,
             hoodieWriteStat.getNumInserts, hoodieWriteStat.getNumDeletes, hoodieWriteStat.getNumUpdateWrites,
             hoodieWriteStat.getTotalWriteErrors, hoodieWriteStat.getTotalLogBlocks, hoodieWriteStat.getTotalCorruptLogBlock,
             hoodieWriteStat.getTotalRollbackBlocks, hoodieWriteStat.getTotalLogRecords,
