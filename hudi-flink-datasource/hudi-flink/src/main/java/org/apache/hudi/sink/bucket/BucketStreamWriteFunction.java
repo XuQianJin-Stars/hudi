@@ -38,6 +38,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import static org.apache.hudi.common.model.WriteConcurrencyMode.SINGLE_WRITER;
+
 /**
  * A stream write function with bucket hash index.
  *
@@ -156,12 +158,14 @@ public class BucketStreamWriteFunction<I> extends StreamWriteFunction<I> {
       int bucketNumber = BucketIdentifier.bucketIdFromFileId(fileID);
       if (isBucketToLoad(bucketNumber, partition)) {
         LOG.info(String.format("Should load this partition bucket %s with fileID %s", bucketNumber, fileID));
-        if (bucketToFileIDMap.containsKey(bucketNumber)) {
+        if (bucketToFileIDMap.containsKey(bucketNumber) && this.writeClient.getConfig().getWriteConcurrencyMode().equals(SINGLE_WRITER)) {
           throw new RuntimeException(String.format("Duplicate fileID %s from bucket %s of partition %s found "
               + "during the BucketStreamWriteFunction index bootstrap.", fileID, bucketNumber, partition));
         } else {
-          LOG.info(String.format("Adding fileID %s to the bucket %s of partition %s.", fileID, bucketNumber, partition));
-          bucketToFileIDMap.put(bucketNumber, fileID);
+          if (!bucketToFileIDMap.containsKey(bucketNumber)) {
+            LOG.info(String.format("Adding fileID %s to the bucket %s of partition %s.", fileID, bucketNumber, partition));
+            bucketToFileIDMap.put(bucketNumber, fileID);
+          }
         }
       }
     });
