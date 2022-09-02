@@ -24,6 +24,7 @@ import org.apache.hudi.common.model.HoodieLogFile;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
+import org.apache.hudi.common.table.timeline.TimelineUtils;
 import org.apache.hudi.common.testutils.HoodieCommonTestHarness;
 import org.apache.hudi.common.testutils.HoodieTestUtils;
 import org.apache.hudi.common.util.CollectionUtils;
@@ -286,6 +287,17 @@ public class TestFSUtils extends HoodieCommonTestHarness {
     assertEquals(log1Ver1W1, logFiles.get(3).getFileName());
     assertEquals(log1base2W0, logFiles.get(4).getFileName());
     assertEquals(log1base2W1, logFiles.get(5).getFileName());
+  }
+
+  @Test
+  public void testLogFilesWithSuffix() {
+    String log1 = FSUtils.makeLogFileName("file1", ".log", "1", 0, "0-0-1", "job1");
+    String log2 = FSUtils.makeLogFileName("file1", ".log", "1", 0, "0-0-1", "job2");
+
+    List<HoodieLogFile> logFiles = Stream.of(log1, log2).map(HoodieLogFile::new).collect(Collectors.toList());
+    assertEquals(log1, logFiles.get(0).getFileName());
+    assertEquals("job1", logFiles.get(0).getLogSuffix());
+    assertEquals("job2", logFiles.get(1).getLogSuffix());
   }
 
   public static String makeOldLogFileName(String fileId, String logFileExtension, String baseCommitTime, int version) {
