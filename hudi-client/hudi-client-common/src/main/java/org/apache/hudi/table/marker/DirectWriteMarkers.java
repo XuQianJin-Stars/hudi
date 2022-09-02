@@ -174,7 +174,7 @@ public class DirectWriteMarkers extends WriteMarkers {
             .setProperties(config.getProps()).build();
 
     if (strategy.hasMarkerConflict(basePath, fs, partitionPath, fileId, instantTime, completedCommitInstants, metaClient)) {
-      strategy.resolveMarkerConflict(basePath, partitionPath, fileId);
+      strategy.resolveMarkerConflict(basePath, partitionPath, fileId, instantTime, metaClient);
     }
     return create(getMarkerPath(partitionPath, dataFileName, type), checkIfExists);
   }

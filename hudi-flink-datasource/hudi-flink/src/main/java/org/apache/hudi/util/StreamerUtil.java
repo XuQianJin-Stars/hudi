@@ -39,7 +39,6 @@ import org.apache.hudi.common.table.view.FileSystemViewStorageConfig;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.StringUtils;
-import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.config.HoodieArchivalConfig;
 import org.apache.hudi.config.HoodieCleanConfig;
 import org.apache.hudi.config.HoodieClusteringConfig;
@@ -170,6 +169,7 @@ public class StreamerUtil {
             .withEngineType(EngineType.FLINK)
             .withPath(conf.getString(FlinkOptions.PATH))
             .combineInput(conf.getBoolean(FlinkOptions.PRE_COMBINE), true)
+            .withWriteLogSuffix(conf.getString(FlinkOptions.WRITE_LOG_SUFFIX))
             .withMergeAllowDuplicateOnInserts(OptionsResolver.insertClustering(conf))
             .withClusteringConfig(
                 HoodieClusteringConfig.newBuilder()
@@ -187,6 +187,7 @@ public class StreamerUtil {
             .withCleanConfig(HoodieCleanConfig.newBuilder()
                 .withAsyncClean(conf.getBoolean(FlinkOptions.CLEAN_ASYNC_ENABLED))
                 .retainCommits(conf.getInteger(FlinkOptions.CLEAN_RETAIN_COMMITS))
+                .cleanerNumHoursRetained(conf.getInteger(FlinkOptions.CLEAN_RETAIN_HOURS))
                 .retainFileVersions(conf.getInteger(FlinkOptions.CLEAN_RETAIN_FILE_VERSIONS))
                 // override and hardcode to 20,
                 // actually Flink cleaning is always with parallelism 1 now
@@ -447,15 +448,18 @@ public class StreamerUtil {
     try {
       long high = HoodieActiveTimeline.parseDateFromInstantTime(highVal).getTime();
       long low = HoodieActiveTimeline.parseDateFromInstantTime(lowVal).getTime();
-      ValidationUtils.checkArgument(high > low,
-          "Instant [" + highVal + "] should have newer timestamp than instant [" + lowVal + "]");
-      long median = low + (high - low) / 2;
-      final String instantTime = HoodieActiveTimeline.formatDate(new Date(median));
-      if (HoodieTimeline.compareTimestamps(lowVal, HoodieTimeline.GREATER_THAN_OR_EQUALS, instantTime)
-          || HoodieTimeline.compareTimestamps(highVal, HoodieTimeline.LESSER_THAN_OR_EQUALS, instantTime)) {
-        return Option.empty();
+      if (high > low) {
+        long median = low + (high - low) / 2;
+        final String instantTime = HoodieActiveTimeline.formatDate(new Date(median));
+        if (HoodieTimeline.compareTimestamps(lowVal, HoodieTimeline.GREATER_THAN_OR_EQUALS, instantTime)
+            || HoodieTimeline.compareTimestamps(highVal, HoodieTimeline.LESSER_THAN_OR_EQUALS, instantTime)) {
+          return Option.empty();
+        }
+        return Option.of(instantTime);
+      } else {
+        LOG.warn("Instant [" + highVal + "] should have newer timestamp than instant [" + lowVal + "]");
+        return Option.of(HoodieActiveTimeline.createNewInstantTime());
       }
-      return Option.of(instantTime);
     } catch (ParseException e) {
       throw new HoodieException("Get median instant time with interval [" + lowVal + ", " + highVal + "] error", e);
     }

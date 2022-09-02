@@ -41,7 +41,7 @@ public abstract class HoodieDirectMarkerBasedEarlyConflictDetectionStrategy impl
   public abstract boolean hasMarkerConflict(String basePath, FileSystem fs, String partitionPath, String dataFileName, String instantTime,
                                             Set<HoodieInstant> completedCommitInstants, HoodieTableMetaClient metaClient);
 
-  public abstract void resolveMarkerConflict(String basePath, String partitionPath, String dataFileName);
+  public abstract void resolveMarkerConflict(String basePath, String partitionPath, String dataFileName, String instantTime, HoodieTableMetaClient metaClient);
 
   /**
    * We need to do list operation here.
@@ -59,9 +59,7 @@ public abstract class HoodieDirectMarkerBasedEarlyConflictDetectionStrategy impl
     long res = Arrays.stream(fs.listStatus(new Path(tempFolderPath)))
         .parallel()
         .map(FileStatus::getPath)
-        .filter(markerPath -> {
-          return !markerPath.getName().equalsIgnoreCase(instantTime);
-        })
+        .filter(markerPath -> !markerPath.getName().equalsIgnoreCase(instantTime))
         .flatMap(currentMarkerDirPath -> {
           try {
             Path markerPartitionPath;

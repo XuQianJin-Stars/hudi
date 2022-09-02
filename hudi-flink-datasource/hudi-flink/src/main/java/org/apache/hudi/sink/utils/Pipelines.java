@@ -21,6 +21,7 @@ package org.apache.hudi.sink.utils;
 import org.apache.hudi.common.model.ClusteringOperation;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.sink.CleanFunction;
@@ -65,6 +66,7 @@ import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -194,12 +196,21 @@ public class Pipelines {
       // is only visible when creating the sink pipeline.
       conf.setBoolean(FlinkOptions.WRITE_BULK_INSERT_SORT_INPUT, false);
     }
-    WriteOperatorFactory<RowData> operatorFactory = AppendWriteOperator.getFactory(conf, rowType);
 
-    return dataStream
-        .transform(opIdentifier("hoodie_append_write", conf), TypeInformation.of(Object.class), operatorFactory)
-        .uid("uid_hoodie_stream_write" + conf.getString(FlinkOptions.TABLE_NAME))
-        .setParallelism(conf.getInteger(FlinkOptions.WRITE_TASKS));
+    HoodieTableType tableType = HoodieTableType.valueOf(conf.getString(FlinkOptions.TABLE_TYPE).toUpperCase(Locale.ROOT));
+    if (OptionsResolver.isNonIndexType(conf) && (tableType == HoodieTableType.MERGE_ON_READ)) {
+      DataStream<HoodieRecord> hoodieRecordStream = rowDataToHoodieRecord(conf, rowType, dataStream);
+      WriteOperatorFactory<HoodieRecord> operatorFactory = NonIndexStreamWriteOperator.getFactory(conf);
+      return hoodieRecordStream.transform("non_index_write", TypeInformation.of(Object.class), operatorFactory)
+          .uid("uid_non_index_write" + conf.getString(FlinkOptions.TABLE_NAME))
+          .setParallelism(conf.getInteger(FlinkOptions.WRITE_TASKS));
+    } else {
+      WriteOperatorFactory<RowData> operatorFactory = AppendWriteOperator.getFactory(conf, rowType);
+      return dataStream
+          .transform(opIdentifier("hoodie_append_write", conf), TypeInformation.of(Object.class), operatorFactory)
+          .uid("uid_hoodie_stream_write" + conf.getString(FlinkOptions.TABLE_NAME))
+          .setParallelism(conf.getInteger(FlinkOptions.WRITE_TASKS));
+    }
   }
 
   /**

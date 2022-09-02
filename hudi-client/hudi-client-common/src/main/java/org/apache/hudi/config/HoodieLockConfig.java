@@ -111,10 +111,10 @@ public class HoodieLockConfig extends HoodieConfig {
       .withDocumentation("For DFS based lock providers, path to store the locks under. use Table's meta path as default");
 
   public static final ConfigProperty<Integer> FILESYSTEM_LOCK_EXPIRE = ConfigProperty
-        .key(FILESYSTEM_LOCK_EXPIRE_PROP_KEY)
-        .defaultValue(0)
-        .sinceVersion("0.12.0")
-        .withDocumentation("For DFS based lock providers, expire time in minutes, must be a nonnegative number, default means no expire");
+      .key(FILESYSTEM_LOCK_EXPIRE_PROP_KEY)
+      .defaultValue(0)
+      .sinceVersion("0.12.0")
+      .withDocumentation("For DFS based lock providers, expire time in minutes, must be a nonnegative number, default means no expire");
 
   public static final ConfigProperty<String> HIVE_DATABASE_NAME = ConfigProperty
       .key(HIVE_DATABASE_NAME_PROP_KEY)
@@ -346,26 +346,6 @@ public class HoodieLockConfig extends HoodieConfig {
 
     public HoodieLockConfig.Builder withFileSystemLockExpire(Integer expireTime) {
       lockConfig.setValue(FILESYSTEM_LOCK_EXPIRE, String.valueOf(expireTime));
-      return this;
-    }
-
-    public HoodieLockConfig.Builder withEarlyConflictDetectionEnable(boolean enable) {
-      lockConfig.setValue(EARLY_CONFLICT_DETECTION_ENABLE, String.valueOf(enable));
-      return this;
-    }
-
-    public HoodieLockConfig.Builder withMarkerConflictCheckerBatchInterval(long interval) {
-      lockConfig.setValue(MARKER_CONFLICT_CHECKER_BATCH_INTERVAL, String.valueOf(interval));
-      return this;
-    }
-
-    public HoodieLockConfig.Builder withMarkerConflictCheckerPeriod(long period) {
-      lockConfig.setValue(MARKER_CONFLICT_CHECKER_PERIOD, String.valueOf(period));
-      return this;
-    }
-
-    public HoodieLockConfig.Builder withEarlyConflictDetectionStrategy(String className) {
-      lockConfig.setValue(EARLY_CONFLICT_DETECTION_STRATEGY_CLASS_NAME, className);
       return this;
     }
 

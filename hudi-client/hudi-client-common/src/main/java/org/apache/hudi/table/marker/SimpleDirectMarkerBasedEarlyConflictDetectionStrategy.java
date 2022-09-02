@@ -50,7 +50,10 @@ public class SimpleDirectMarkerBasedEarlyConflictDetectionStrategy extends Hoodi
   }
 
   @Override
-  public void resolveMarkerConflict(String basePath, String partitionPath, String dataFileName) {
-    throw new HoodieEarlyConflictDetectionException(new ConcurrentModificationException("Early conflict detected but cannot resolve conflicts for overlapping writes"));
+  public void resolveMarkerConflict(String basePath, String partitionPath, String dataFileName, String instantTime, HoodieTableMetaClient metaClient) {
+    LOG.warn("Detected resolve conflict marker files: " + partitionPath + "/" + dataFileName + " for " + instantTime);
+    if (!metaClient.reloadActiveTimeline().filterPendingCompactionTimeline().containsInstant(instantTime)) {
+      throw new HoodieEarlyConflictDetectionException(new ConcurrentModificationException("Early conflict detected but cannot resolve conflicts for overlapping writes"));
+    }
   }
 }
