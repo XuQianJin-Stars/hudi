@@ -283,6 +283,8 @@ public abstract class   BaseHoodieTableFileIndex {
     Option<String> queryInstant =
         specifiedQueryInstant.or(() -> latestInstant.map(HoodieInstant::getTimestamp));
 
+    LOG.info("queryInstant: " + queryInstant);
+
     validate(activeTimeline, queryInstant);
 
     if (tableType.equals(HoodieTableType.MERGE_ON_READ) && queryType.equals(HoodieTableQueryType.SNAPSHOT)) {
