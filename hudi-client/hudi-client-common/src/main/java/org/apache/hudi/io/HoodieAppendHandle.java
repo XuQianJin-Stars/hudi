@@ -49,6 +49,8 @@ import org.apache.hudi.common.table.log.block.HoodieHFileDataBlock;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock.HeaderMetadataType;
 import org.apache.hudi.common.table.log.block.HoodieParquetDataBlock;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
+import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.view.TableFileSystemView.SliceView;
 import org.apache.hudi.common.util.DefaultSizeEstimator;
 import org.apache.hudi.common.util.Option;
@@ -145,12 +147,24 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
       String baseInstantTime;
       String baseFile = "";
       List<String> logFiles = new ArrayList<>();
+
+      Option<HoodieInstant> maxCompleteInstant = hoodieTable.getMetaClient().getActiveTimeline().getWriteTimeline()
+          .filterCompletedAndCompactionInstants().lastInstant();
+      if (maxCompleteInstant.isPresent()) {
+        if (fileSlice.isPresent()) {
+          baseInstantTime = fileSlice.get().getBaseInstantTime();
+        } else {
+          baseInstantTime = instantTime;
+        }
+      } else {
+        String instantTime = HoodieActiveTimeline.createNewInstantTime();
+        baseInstantTime = instantTime.substring(0, instantTime.length() - 9) + String.format("%09d", 0);
+      }
+
       if (fileSlice.isPresent()) {
-        baseInstantTime = fileSlice.get().getBaseInstantTime();
         baseFile = fileSlice.get().getBaseFile().map(BaseFile::getFileName).orElse("");
         logFiles = fileSlice.get().getLogFiles().map(HoodieLogFile::getFileName).collect(Collectors.toList());
       } else {
-        baseInstantTime = instantTime;
         // This means there is no base data file, start appending to a new log file
         fileSlice = Option.of(new FileSlice(partitionPath, baseInstantTime, this.fileId));
         LOG.info("New AppendHandle for partition :" + partitionPath + " baseInstantTime :" + baseInstantTime + " fileId :" + this.fileId);
@@ -182,6 +196,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
         // https://issues.apache.org/jira/browse/HUDI-1517
         createMarkerFile(partitionPath, FSUtils.makeBaseFileName(baseInstantTime, writeToken, fileId, hoodieTable.getBaseFileExtension()));
 
+        LOG.info("Init LogWriter for partition :" + partitionPath + " baseInstantTime :" + baseInstantTime + " fileId :" + this.fileId);
         this.writer = createLogWriter(fileSlice, baseInstantTime);
       } catch (Exception e) {
         LOG.error("Error in update task at commit " + instantTime, e);

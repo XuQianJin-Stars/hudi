@@ -31,7 +31,6 @@ import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieIOException;
-import org.apache.hudi.exception.HoodieLockException;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
@@ -78,7 +77,7 @@ public class FileSystemBasedLockProvider implements LockProvider<String>, Serial
       try {
         fs.delete(this.lockFile, true);
       } catch (IOException e) {
-        throw new HoodieLockException(generateLogStatement(LockState.FAILED_TO_RELEASE), e);
+        LOG.error(generateLogStatement(LockState.FAILED_TO_RELEASE) + " failed to close", e);
       }
     }
   }
@@ -112,8 +111,8 @@ public class FileSystemBasedLockProvider implements LockProvider<String>, Serial
         if (fs.exists(this.lockFile)) {
           fs.delete(this.lockFile, true);
         }
-      } catch (IOException io) {
-        throw new HoodieIOException(generateLogStatement(LockState.FAILED_TO_RELEASE), io);
+      } catch (IOException e) {
+        LOG.error(generateLogStatement(LockState.FAILED_TO_RELEASE) + " failed to unlock", e);
       }
     }
   }
