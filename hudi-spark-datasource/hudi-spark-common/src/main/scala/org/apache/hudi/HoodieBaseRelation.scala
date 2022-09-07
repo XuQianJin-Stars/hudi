@@ -315,7 +315,8 @@ abstract class HoodieBaseRelation(val sqlContext: SQLContext,
     //
     // (!!!) IT'S CRITICAL TO AVOID REORDERING OF THE REQUESTED COLUMNS AS THIS WILL BREAK THE UPSTREAM
     //       PROJECTION
-    val targetColumns: Array[String] = appendMandatoryColumns(requiredColumns.filterNot(field => field.contains(";")))
+    val targetColumns: Array[String] =
+      appendMandatoryColumns(requiredColumns.filterNot(field => field.contains(";"))).filterNot(field => field.contains(";"))
     // NOTE: We explicitly fallback to default table's Avro schema to make sure we avoid unnecessary Catalyst > Avro
     //       schema conversion, which is lossy in nature (for ex, it doesn't preserve original Avro type-names) and
     //       could have an effect on subsequent de-/serializing records in some exotic scenarios (when Avro unions
