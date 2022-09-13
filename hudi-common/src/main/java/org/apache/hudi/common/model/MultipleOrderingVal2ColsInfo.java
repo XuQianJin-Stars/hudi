@@ -21,6 +21,7 @@ package org.apache.hudi.common.model;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * MultipleOrderingVal2ColsInfo
@@ -49,7 +50,9 @@ public class MultipleOrderingVal2ColsInfo {
     orderingVal2ColsInfoList.stream().forEach(orderingVal2ColsInfo -> {
       sb.append(orderingVal2ColsInfo.orderingField);
       sb.append("=");
-      sb.append(orderingVal2ColsInfo.orderingValue);
+      if (Objects.nonNull(orderingVal2ColsInfo.orderingValue)) {
+        sb.append(orderingVal2ColsInfo.orderingValue);
+      }
       sb.append(":");
       sb.append(String.join(",", orderingVal2ColsInfo.getColumnNames()));
       sb.append(";");
@@ -61,7 +64,7 @@ public class MultipleOrderingVal2ColsInfo {
 
   public class OrderingVal2ColsInfo {
     private String orderingField;
-    private String orderingValue;
+    private String orderingValue = "";
     private List<String> columnNames;
 
     public OrderingVal2ColsInfo(String orderingFieldWithColsText) {
