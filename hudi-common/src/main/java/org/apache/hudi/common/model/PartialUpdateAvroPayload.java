@@ -24,12 +24,12 @@ import org.apache.avro.generic.IndexedRecord;
 
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.util.Option;
-import org.apache.hudi.exception.HoodieException;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * subclass of OverwriteNonDefaultsWithLatestAvroPayload used for delta streamer.
@@ -71,9 +71,9 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
       GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schemaInstance).get();
       Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, this.orderingVal.toString());
       // Rebuild ordering value if required
-      String newOrderingVal = rebuildOrderingValMap((GenericRecord) optValue.get(), this.orderingVal.toString());
+      String newOrderingFieldWithColsText = rebuildWithNewOrderingVal((GenericRecord) optValue.get(), this.orderingVal.toString());
       if (optValue.isPresent()) {
-        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), newOrderingVal);
+        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), newOrderingFieldWithColsText);
       }
     } catch (Exception ex) {
       return this;
@@ -82,69 +82,69 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
   }
 
   public Option<IndexedRecord> combineAndGetUpdateValue(
-      IndexedRecord currentValue, Schema schema, String newOrderingValWithMappings) throws IOException {
-    Option<IndexedRecord> recordOption = getInsertValue(schema);
-    if (!recordOption.isPresent()) {
+      IndexedRecord currentValue, Schema schema, String multipleOrderingFieldsWithCols) throws IOException {
+    Option<IndexedRecord> incomingRecord = getInsertValue(schema);
+    if (!incomingRecord.isPresent()) {
       return Option.empty();
     }
 
     // Perform a deserialization again to prevent resultRecord from sharing the same reference as recordOption
     GenericRecord resultRecord = (GenericRecord) getInsertValue(schema).get();
-    List<Schema.Field> fields = schema.getFields();
 
-    // newOrderingValWithMappings = _ts1:name1,price1=999;_ts2:name2,price2=;
-    for (String newOrderingFieldMapping : newOrderingValWithMappings.split(";")) {
-      String orderingField = newOrderingFieldMapping.split(":")[0];
-      String newOrderingVal = getNewOrderingVal(orderingField, newOrderingFieldMapping);
-      String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
-          (GenericRecord) currentValue, orderingField, true, false);
-      if (oldOrderingVal == null) {
-        oldOrderingVal = "";
+    Map<String, Schema.Field> name2Field = schema.getFields().stream().collect(Collectors.toMap(Schema.Field::name, item -> item));
+    // multipleOrderingFieldsWithCols = _ts1:name1,price1=999;_ts2:name2,price2=;
+
+    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(multipleOrderingFieldsWithCols);
+    final Boolean[] deleteFlag = new Boolean[1];
+    deleteFlag[0] = false;
+    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
+      String persistOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
+          (GenericRecord) currentValue, orderingVal2ColsInfo.getOrderingField(), true, false);
+      if (persistOrderingVal == null) {
+        persistOrderingVal = "";
       }
 
       // No update required
-      if (oldOrderingVal.isEmpty() && newOrderingVal.isEmpty()) {
-        continue;
+      if (persistOrderingVal.isEmpty() && orderingVal2ColsInfo.getOrderingField().isEmpty()) {
+        return;
       }
 
       // Pick the payload with greatest ordering value as insert record
-      boolean isBaseRecord = false;
+      boolean needUpdatePersistData = false;
       try {
-        if (Long.parseLong(oldOrderingVal) > Long.parseLong(newOrderingVal)) {
-          isBaseRecord = true;
+        if (Long.parseLong(persistOrderingVal) < Long.parseLong(orderingVal2ColsInfo.getOrderingValue())) {
+          needUpdatePersistData = true;
         }
       } catch (NumberFormatException e) {
-        if (oldOrderingVal.compareTo(newOrderingVal) > 0) {
-          isBaseRecord = true;
+        if (persistOrderingVal.compareTo(orderingVal2ColsInfo.getOrderingValue()) < 0) {
+          needUpdatePersistData = true;
         }
       }
 
       // Initialise the fields of the sub-tables
       GenericRecord insertRecord;
-      if (isBaseRecord) {
+      if (!needUpdatePersistData) {
         insertRecord = (GenericRecord) currentValue;
         // resultRecord is already assigned as recordOption
+        orderingVal2ColsInfo.getColumnNames().stream()
+            .filter(fieldName -> name2Field.containsKey(fieldName))
+            .forEach(fieldName -> resultRecord.put(fieldName, insertRecord.get(fieldName)));
+        resultRecord.put(orderingVal2ColsInfo.getOrderingField(), Long.parseLong(persistOrderingVal));
       } else {
-        insertRecord = (GenericRecord) recordOption.get();
-        GenericRecord currentRecord = (GenericRecord) currentValue;
-        fields.stream()
-            .filter(f -> newOrderingFieldMapping.contains(f.name()))
-            .forEach(f -> resultRecord.put(f.name(), currentRecord.get(f.name())));
+        insertRecord = (GenericRecord) incomingRecord.get();
+        orderingVal2ColsInfo.getColumnNames().stream()
+            .filter(fieldName -> name2Field.containsKey(fieldName))
+            .forEach(fieldName -> resultRecord.put(fieldName, insertRecord.get(fieldName)));
       }
 
       // If any of the sub-table records is flagged for deletion, delete entire row
       if (isDeleteRecord(insertRecord)) {
-        return Option.empty();
-      } else {
-        // Perform partial update
-        fields.stream()
-            .filter(f -> newOrderingFieldMapping.contains(f.name()))
-            .forEach(f -> {
-              Object value = insertRecord.get(f.name());
-              value = f.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
-              resultRecord.put(f.name(), value);
-            });
+        deleteFlag[0] = true;
       }
+    });
+
+    if (deleteFlag[0]) {
+      return Option.empty();
     }
     return Option.of(resultRecord);
   }
@@ -160,31 +160,23 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     if (!recordOption.isPresent()) {
       return Option.empty();
     }
-    String newOrderingFieldMappings = rebuildOrderingValMap(
+    String orderingFieldWithColsText = rebuildWithNewOrderingVal(
         (GenericRecord) recordOption.get(), this.orderingVal.toString());
-    return combineAndGetUpdateValue(currentValue, schema, newOrderingFieldMappings);
+    return combineAndGetUpdateValue(currentValue, schema, orderingFieldWithColsText);
   }
 
-  private static String getNewOrderingVal(String orderingFieldToUse, String newOrderingValWithMapping) {
+  private static String getOrderingValForOneOrderingField(String newOrderingValWithMapping) {
     String[] newOrderingValWithMappingArr = newOrderingValWithMapping.split(":.*=");
-    if (newOrderingValWithMappingArr[0].equals(orderingFieldToUse)) {
-      return newOrderingValWithMappingArr.length > 1 ? newOrderingValWithMappingArr[1] : "";
-    }
-    throw new HoodieException("No ordering field of interest found");
+    return newOrderingValWithMappingArr.length > 1 ? newOrderingValWithMappingArr[1] : "";
   }
 
-  private static String rebuildOrderingValMap(GenericRecord record, String oldOrderingValWithMappings) {
-    StringBuilder sb = new StringBuilder();
-    for (String oldOrderingValWithMapping : oldOrderingValWithMappings.split(";")) {
-      String[] oldOrderingValWithMappingArr = oldOrderingValWithMapping.split(":.*=");
-      Object orderingVal = record.get(oldOrderingValWithMappingArr[0]);
-      orderingVal = orderingVal == null ? "" : orderingVal;
-      sb.append(oldOrderingValWithMapping.split("=")[0])
-          .append("=")
-          .append(orderingVal)
-          .append(";");
-    }
-    return sb.toString();
+  private static String rebuildWithNewOrderingVal(GenericRecord record, String orderingFieldWithColsText) {
+    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(orderingFieldWithColsText);
+    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
+      Object orderingVal = record.get(orderingVal2ColsInfo.getOrderingField());
+      orderingVal2ColsInfo.setOrderingValue(orderingVal.toString());
+    });
+    return multipleOrderingVal2ColsInfo.generateOrderingText();
   }
 
   /**

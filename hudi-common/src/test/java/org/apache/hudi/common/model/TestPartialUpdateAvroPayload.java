@@ -91,9 +91,9 @@ public class TestPartialUpdateAvroPayload {
     properties.put("schema", jsonSchema);
     // Keep record with largest ordering fiel
     PartialUpdateAvroPayload payload1 =
-        new PartialUpdateAvroPayload(record1, "_ts1:name1,price1=0;_ts2:name2,price2=0");
+        new PartialUpdateAvroPayload(record1, "_ts1=0:name1,price1;_ts2=0:name2,price2");
     PartialUpdateAvroPayload payload2 =
-        new PartialUpdateAvroPayload(record2, "_ts1:name1,price1=1;_ts2:name2,price2=1");
+        new PartialUpdateAvroPayload(record2, "_ts1=1:name1,price1;_ts2=1:name2,price2");
     assertArrayEquals(new PartialUpdateAvroPayload(record3, 2).recordBytes,
         payload1.preCombine(payload2, properties).recordBytes);
     assertArrayEquals(new PartialUpdateAvroPayload(record3, 2).recordBytes,
@@ -134,13 +134,13 @@ public class TestPartialUpdateAvroPayload {
     record4.put("_ts2", 5L);
 
     // Update subtable columns if ordering field is larger
-    payload1 = new PartialUpdateAvroPayload(record1, "_ts1:name1,price1=5;_ts2:name2,price2=4");
-    payload2 = new PartialUpdateAvroPayload(record2, "_ts1:name1,price1=;_ts2:name2,price2=5");
+    payload1 = new PartialUpdateAvroPayload(record1, "_ts1=5:name1,price1;_ts2=4:name2,price2");
+    payload2 = new PartialUpdateAvroPayload(record2, "_ts1=4:name1,price1;_ts2=5:name2,price2");
 
     PartialUpdateAvroPayload preCombineRes1 = payload1.preCombine(payload2, properties);
     PartialUpdateAvroPayload preCombineRes2 = payload2.preCombine(payload1, properties);
 
-    String expOrderingVal = "_ts1:name1,price1=5;_ts2:name2,price2=5;";
+    String expOrderingVal = "_ts1=5:name1,price1;_ts2=5:name2,price2";
     PartialUpdateAvroPayload expPrecombineRes =
         new PartialUpdateAvroPayload(record4, expOrderingVal);
 
@@ -183,9 +183,9 @@ public class TestPartialUpdateAvroPayload {
     record2.put("_hoodie_is_deleted", true);
 
     PartialUpdateAvroPayload payload1 =
-        new PartialUpdateAvroPayload(record1, "_ts1:name1,price1=1;_ts2:name2,price2=1");
+        new PartialUpdateAvroPayload(record1, "_ts1=1:name1,price1;_ts2=1:name2,price2");
     PartialUpdateAvroPayload payload2 =
-        new PartialUpdateAvroPayload(delRecord1, "_ts1:name1,price1=2;_ts2:name2,price2=2");
+        new PartialUpdateAvroPayload(delRecord1, "_ts1=2:name1,price1;_ts2=2:name2,price2");
 
     assertEquals(payload1.preCombine(payload2), payload2);
     assertEquals(payload2.preCombine(payload1), payload2);
@@ -231,7 +231,7 @@ public class TestPartialUpdateAvroPayload {
     record3.put("_ts2", null);
 
     PartialUpdateAvroPayload payload2 =
-        new PartialUpdateAvroPayload(record2, "_ts1:name1,price1=1;_ts2:name2,price2=");
+        new PartialUpdateAvroPayload(record2, "_ts1=1:name1,price1;_ts2=2:name2,price2");
     assertEquals(payload2.combineAndGetUpdateValue(record1, schema).get(), record3);
   }
 }
