@@ -70,18 +70,19 @@ public class FlinkWriteHelperTest {
   }
 
   @Test
-  void deduplicateRecords() throws IOException {
+  void deduplicateRecords() throws IOException, InterruptedException {
     List<HoodieAvroRecord> records = data();
     records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, this.avroSchema.toString());
     GenericRecord record = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) records.get(0).getData()).recordBytes, this.avroSchema);
-    System.out.println(record);
+    System.out.println("==================================================================");
+    System.out.println("last: " + record);
   }
 
-  public List<HoodieAvroRecord> data() {
-    AtomicInteger faCnt = new AtomicInteger();
-    AtomicInteger fbCnt = new AtomicInteger();
+  public List<HoodieAvroRecord> data() throws InterruptedException {
+    AtomicInteger faCnt = new AtomicInteger(1);
+    AtomicInteger fbCnt = new AtomicInteger(1);
     List<GenericRecord> records = new ArrayList<>();
-    for (int i = 0; i < 100; i++) {
+    for (int i = 1; i <= 100; i++) {
       long ts = System.currentTimeMillis();
       GenericRecord row1 = new GenericData.Record(this.avroSchema);
       row1.put("id", "jack");
@@ -93,6 +94,7 @@ public class FlinkWriteHelperTest {
       row2.put("_ts2", ts);
       records.add(row1);
       records.add(row2);
+      Thread.sleep(1);
     }
 
     return records.stream().map(genericRowData -> {
