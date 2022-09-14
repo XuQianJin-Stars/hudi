@@ -113,7 +113,8 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
       // Pick the payload with greatest ordering value as insert record
       boolean needUpdatePersistData = false;
       try {
-        if (Long.parseLong(persistOrderingVal) < Long.parseLong(orderingVal2ColsInfo.getOrderingValue())) {
+        if (persistOrderingVal == null || (orderingVal2ColsInfo.getOrderingValue() != null
+            && persistOrderingVal.compareTo(orderingVal2ColsInfo.getOrderingValue()) <= 0)) {
           needUpdatePersistData = true;
         }
       } catch (NumberFormatException e) {
