@@ -74,7 +74,7 @@ public class FlinkWriteHelperTest {
     List<HoodieAvroRecord> records = data();
     records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, this.avroSchema.toString());
     GenericRecord record = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) records.get(0).getData()).recordBytes, this.avroSchema);
-    System.out.println("==================================================================");
+    System.out.println("======================================================================================");
     System.out.println("last: " + record);
   }
 

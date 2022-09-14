@@ -117,7 +117,8 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
       hoodieRecord.setCurrentLocation(rec1.getCurrentLocation());
 
       try {
-        GenericRecord record = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) hoodieRecord.getData()).recordBytes, new Schema.Parser().parse(schemaString));
+        GenericRecord record = HoodieAvroUtils.bytesToAvro(
+            ((PartialUpdateAvroPayload) hoodieRecord.getData()).recordBytes, new Schema.Parser().parse(schemaString));
         System.out.println(record);
       } catch (IOException e) {
         throw new RuntimeException(e);

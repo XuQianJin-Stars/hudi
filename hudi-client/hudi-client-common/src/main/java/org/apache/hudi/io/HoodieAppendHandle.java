@@ -149,16 +149,16 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
       List<String> logFiles = new ArrayList<>();
 
       Option<HoodieInstant> maxCompleteInstant = hoodieTable.getMetaClient().getActiveTimeline().getWriteTimeline()
-          .filterCompletedAndCompactionInstants().lastInstant();
-      if (fileSlice.isPresent()) {
-        baseInstantTime = fileSlice.get().getBaseInstantTime();
-      } else {
-        if (maxCompleteInstant.isPresent()) {
-          baseInstantTime = instantTime;
+          .filterCompletedCompactionInstants().lastInstant();
+      if (maxCompleteInstant.isPresent()) {
+        if (fileSlice.isPresent()) {
+          baseInstantTime = fileSlice.get().getBaseInstantTime();
         } else {
-          String instantTime = HoodieActiveTimeline.createNewInstantTime();
-          baseInstantTime = instantTime.substring(0, instantTime.length() - 9) + String.format("%09d", 0);
+          baseInstantTime = instantTime;
         }
+      } else {
+        String instantTime = HoodieActiveTimeline.createNewInstantTime();
+        baseInstantTime = instantTime.substring(0, instantTime.length() - 9) + String.format("%09d", 0);
       }
 
       if (fileSlice.isPresent()) {
