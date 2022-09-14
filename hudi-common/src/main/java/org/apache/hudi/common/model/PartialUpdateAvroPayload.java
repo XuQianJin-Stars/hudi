@@ -27,6 +27,7 @@ import org.apache.hudi.common.util.Option;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -97,7 +98,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(multipleOrderingFieldsWithCols);
     final Boolean[] deleteFlag = new Boolean[1];
     deleteFlag[0] = false;
-    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
+    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().forEach(orderingVal2ColsInfo -> {
       String persistOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
           (GenericRecord) currentValue, orderingVal2ColsInfo.getOrderingField(), true, false);
       if (persistOrderingVal == null) {
@@ -127,13 +128,13 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
         insertRecord = (GenericRecord) currentValue;
         // resultRecord is already assigned as recordOption
         orderingVal2ColsInfo.getColumnNames().stream()
-            .filter(fieldName -> name2Field.containsKey(fieldName))
+            .filter(name2Field::containsKey)
             .forEach(fieldName -> resultRecord.put(fieldName, insertRecord.get(fieldName)));
         resultRecord.put(orderingVal2ColsInfo.getOrderingField(), Long.parseLong(persistOrderingVal));
       } else {
         insertRecord = (GenericRecord) incomingRecord.get();
         orderingVal2ColsInfo.getColumnNames().stream()
-            .filter(fieldName -> name2Field.containsKey(fieldName))
+            .filter(name2Field::containsKey)
             .forEach(fieldName -> resultRecord.put(fieldName, insertRecord.get(fieldName)));
       }
 
@@ -165,16 +166,15 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     return combineAndGetUpdateValue(currentValue, schema, orderingFieldWithColsText);
   }
 
-  private static String getOrderingValForOneOrderingField(String newOrderingValWithMapping) {
-    String[] newOrderingValWithMappingArr = newOrderingValWithMapping.split(":.*=");
-    return newOrderingValWithMappingArr.length > 1 ? newOrderingValWithMappingArr[1] : "";
-  }
-
   private static String rebuildWithNewOrderingVal(GenericRecord record, String orderingFieldWithColsText) {
     MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(orderingFieldWithColsText);
-    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().stream().forEach(orderingVal2ColsInfo -> {
+    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().forEach(orderingVal2ColsInfo -> {
       Object orderingVal = record.get(orderingVal2ColsInfo.getOrderingField());
-      orderingVal2ColsInfo.setOrderingValue(orderingVal.toString());
+      if (Objects.nonNull(orderingVal)) {
+        orderingVal2ColsInfo.setOrderingValue(orderingVal.toString());
+      } else {
+        orderingVal2ColsInfo.setOrderingValue("-1");
+      }
     });
     return multipleOrderingVal2ColsInfo.generateOrderingText();
   }

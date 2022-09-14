@@ -245,7 +245,8 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
       }
       DataType partitionFieldType = table.getSchema().getFieldDataType(partitionField)
           .orElseThrow(() -> new HoodieValidationException("Field " + partitionField + " does not exist"));
-      if (pks.length <= 1 && DataTypeUtils.isDatetimeType(partitionFieldType)) {
+      if (pks.length <= 1 && (DataTypeUtils.isDatetimeType(partitionFieldType)
+          || conf.getOptional(FlinkOptions.PARTITION_TIMESTAMP_TYPE).isPresent())) {
         // timestamp based key gen only supports simple primary key
         setupTimestampKeygenOptions(conf, partitionFieldType);
         return;
@@ -284,6 +285,14 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
         conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_TYPE_FIELD_PROP,
             TimestampBasedAvroKeyGenerator.TimestampType.EPOCHMILLISECONDS.name());
       }
+      String outputPartitionFormat = conf.getOptional(FlinkOptions.PARTITION_FORMAT).orElse(FlinkOptions.PARTITION_FORMAT_HOUR);
+      conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_OUTPUT_DATE_FORMAT_PROP, outputPartitionFormat);
+    } else if (conf.getOptional(FlinkOptions.PARTITION_TIMESTAMP_TYPE).isPresent()
+        && conf.getOptional(FlinkOptions.PARTITION_TIMESTAMP_TYPE).get().equalsIgnoreCase(
+        TimestampBasedAvroKeyGenerator.TimestampType.EPOCHMILLISECONDS.name())) {
+      // milliseconds
+      conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_TYPE_FIELD_PROP,
+          TimestampBasedAvroKeyGenerator.TimestampType.EPOCHMILLISECONDS.name());
       String outputPartitionFormat = conf.getOptional(FlinkOptions.PARTITION_FORMAT).orElse(FlinkOptions.PARTITION_FORMAT_HOUR);
       conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_OUTPUT_DATE_FORMAT_PROP, outputPartitionFormat);
     } else {

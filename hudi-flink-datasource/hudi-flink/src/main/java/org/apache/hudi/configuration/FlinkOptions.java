@@ -391,6 +391,13 @@ public class FlinkOptions extends HoodieConfig {
           + "1) 'yyyyMMddHH' for timestamp(3) WITHOUT TIME ZONE, LONG, FLOAT, DOUBLE, DECIMAL;\n"
           + "2) 'yyyyMMdd' for DATE and INT.");
 
+
+  public static final ConfigOption<String> PARTITION_TIMESTAMP_TYPE = ConfigOptions
+      .key("write.partition.timestamp.type")
+      .stringType()
+      .noDefaultValue()
+      .withDescription("Partition timestamp type.");
+
   public static final ConfigOption<Integer> INDEX_BOOTSTRAP_TASKS = ConfigOptions
       .key("write.index_bootstrap.tasks")
       .intType()

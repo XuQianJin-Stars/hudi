@@ -66,6 +66,10 @@ public class DataTypeUtils {
     return isTimestampType(type) || isDateType(type);
   }
 
+  public static boolean isEpochMilliSeconds(DataType type) {
+    return type.getLogicalType().getTypeRoot() == LogicalTypeRoot.BIGINT;
+  }
+
   /**
    * Projects the row fields with given names.
    */
