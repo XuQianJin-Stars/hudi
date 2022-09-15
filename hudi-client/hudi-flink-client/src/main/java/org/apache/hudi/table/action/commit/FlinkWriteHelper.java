@@ -18,9 +18,6 @@
 
 package org.apache.hudi.table.action.commit;
 
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.data.HoodieListData;
 import org.apache.hudi.common.engine.HoodieEngineContext;
@@ -29,14 +26,12 @@ import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.model.PartialUpdateAvroPayload;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -115,15 +110,6 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
       HoodieRecord<T> hoodieRecord = new HoodieAvroRecord<>(reducedKey, reducedData, operation);
       // reuse the location from the first record.
       hoodieRecord.setCurrentLocation(rec1.getCurrentLocation());
-
-      try {
-        GenericRecord record = HoodieAvroUtils.bytesToAvro(
-            ((PartialUpdateAvroPayload) hoodieRecord.getData()).recordBytes, new Schema.Parser().parse(schemaString));
-        System.out.println(record);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-
       return hoodieRecord;
     }).orElse(null)).filter(Objects::nonNull).collect(Collectors.toList());
   }
