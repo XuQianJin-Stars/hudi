@@ -29,6 +29,7 @@ import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.HoodieCleaningPolicy;
+import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
 import org.apache.hudi.common.table.log.HoodieLogFormat;
@@ -338,7 +339,10 @@ public class StreamerUtil {
     // Hadoop FileSystem
     FileSystem fs = FSUtils.getFs(basePath, hadoopConf);
     try {
-      return fs.exists(new Path(basePath, HoodieTableMetaClient.METAFOLDER_NAME));
+      Path metaPath = new Path(basePath, HoodieTableMetaClient.METAFOLDER_NAME);
+      Path cfgPath = new Path(metaPath, HoodieTableConfig.HOODIE_PROPERTIES_FILE);
+      Path backupCfgPath = new Path(metaPath, HoodieTableConfig.HOODIE_PROPERTIES_FILE_BACKUP);
+      return fs.exists(metaPath) && (fs.exists(cfgPath) || fs.exists(backupCfgPath));
     } catch (IOException e) {
       throw new HoodieException("Error while checking whether table exists under path:" + basePath, e);
     }
