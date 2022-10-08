@@ -83,6 +83,19 @@ public class TestHoodieAvroUtils {
       + "{\"name\": \"non_nullable_field_wo_default\",\"type\": \"string\"},"
       + "{\"name\": \"non_nullable_field_with_default\",\"type\": \"string\", \"default\": \"dummy\"}]}";
 
+  private static String SCHEMA_WITH_MULTIPLE_PARTIAL_UPDATE =  "{\n"
+      + "  \"type\": \"record\",\n"
+      + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
+      + "  \"fields\": [\n"
+      + "    {\"name\": \"id\", \"type\": [\"null\", \"string\"]},\n"
+      + "    {\"name\": \"fa\", \"type\": [\"null\", \"string\"]},\n"
+      + "    {\"name\": \"fb\", \"type\": [\"null\", \"string\"]},\n"
+      + "    {\"name\": \"_ts1\", \"type\": [\"null\", \"long\"]},\n"
+      + "    {\"name\": \"fc\", \"type\": [\"null\", \"string\"]},\n"
+      + "    {\"name\": \"_ts2\", \"type\": [\"null\", \"long\"]}\n"
+      + "  ]\n"
+      + "}";
+
   private static String SCHEMA_WITH_NON_NULLABLE_FIELD_WITH_DEFAULT = "{\"type\": \"record\",\"name\": \"testrec4\",\"fields\": [ "
       + "{\"name\": \"timestamp\",\"type\": \"double\"},{\"name\": \"_row_key\", \"type\": \"string\"},"
       + "{\"name\": \"non_pii_col\", \"type\": \"string\"},"
@@ -379,5 +392,20 @@ public class TestHoodieAvroUtils {
     Date now = new Date(System.currentTimeMillis());
     int days = HoodieAvroUtils.fromJavaDate(now);
     assertEquals(now.toLocalDate(), HoodieAvroUtils.toJavaDate(days).toLocalDate());
+  }
+
+  @Test
+  public void testGetMultipleNestedFieldVals() {
+
+    GenericRecord genericRecord = new GenericData.Record(new Schema.Parser().parse(SCHEMA_WITH_MULTIPLE_PARTIAL_UPDATE));
+    genericRecord.put("id", "jerry");
+    genericRecord.put("fa", "fa");
+    genericRecord.put("fb", "fb");
+    genericRecord.put("_ts1", 0L);
+    genericRecord.put("fc", "fc");
+    genericRecord.put("_ts2", 1L);
+    String preCombineFields = "_ts1:fa,fb;_ts2:fc";
+    Object orderingVals = HoodieAvroUtils.getMultipleNestedFieldVals(genericRecord, preCombineFields, false);
+    Assertions.assertEquals("_ts1=0:fa,fb;_ts2=1:fc", orderingVals);
   }
 }

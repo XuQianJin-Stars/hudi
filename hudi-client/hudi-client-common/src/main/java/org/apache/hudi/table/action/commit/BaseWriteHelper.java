@@ -21,6 +21,7 @@ package org.apache.hudi.table.action.commit;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.WriteOperationType;
+import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.HoodieTable;
@@ -43,7 +44,7 @@ public abstract class BaseWriteHelper<T extends HoodieRecordPayload, I, K, O, R>
     try {
       // De-dupe/merge if needed
       I dedupedRecords =
-          combineOnCondition(shouldCombine, inputRecords, shuffleParallelism, table, executor.config.getSchema());
+          combineOnCondition(shouldCombine, inputRecords, shuffleParallelism, table, executor.config);
 
       Instant lookupBegin = Instant.now();
       I taggedRecords = dedupedRecords;
@@ -69,8 +70,8 @@ public abstract class BaseWriteHelper<T extends HoodieRecordPayload, I, K, O, R>
       I dedupedRecords, HoodieEngineContext context, HoodieTable<T, I, K, O> table);
 
   public I combineOnCondition(
-          boolean condition, I records, int parallelism, HoodieTable<T, I, K, O> table, String schemaString) {
-    return condition ? deduplicateRecords(records, table, parallelism, schemaString) : records;
+      boolean condition, I records, int parallelism, HoodieTable<T, I, K, O> table, HoodieWriteConfig writeConfig) {
+    return condition ? deduplicateRecords(records, table, parallelism, writeConfig) : records;
   }
 
   /**
@@ -81,10 +82,10 @@ public abstract class BaseWriteHelper<T extends HoodieRecordPayload, I, K, O, R>
    * @return Collection of HoodieRecord already be deduplicated
    */
   public I deduplicateRecords(
-      I records, HoodieTable<T, I, K, O> table, int parallelism, String schemaString) {
-    return deduplicateRecords(records, table.getIndex(), parallelism, schemaString);
+      I records, HoodieTable<T, I, K, O> table, int parallelism, HoodieWriteConfig writeConfig) {
+    return deduplicateRecords(records, table.getIndex(), parallelism, writeConfig);
   }
 
   public abstract I deduplicateRecords(
-      I records, HoodieIndex<?, ?> index, int parallelism, String schemaString);
+      I records, HoodieIndex<?, ?> index, int parallelism, HoodieWriteConfig writeConfig);
 }

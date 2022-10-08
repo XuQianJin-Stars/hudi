@@ -26,6 +26,8 @@ import org.apache.hudi.common.model.HoodieAvroRecord;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.PartialUpdateAvroPayload;
+import org.apache.hudi.common.util.Option;
+import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.index.HoodieIndex;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,8 @@ public class FlinkWriteHelperTest {
 
   private String preCombineFields = "";
 
+  private HoodieWriteConfig writeConfig;
+
   public static final String SCHEMA = "{\n"
       + "  \"type\": \"record\",\n"
       + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
@@ -67,12 +71,18 @@ public class FlinkWriteHelperTest {
   public void setUp() throws Exception {
     this.preCombineFields = "_ts1:fa;_ts2:fb";
     this.avroSchema = new Schema.Parser().parse(SCHEMA);
+    this.writeConfig = HoodieWriteConfig
+      .newBuilder()
+      .withPath(tempFile.getAbsolutePath())
+      .withSchema(SCHEMA)
+      .withPreCombineField(preCombineFields)
+      .build();
   }
 
   @Test
   void deduplicateRecords() throws IOException, InterruptedException {
     List<HoodieAvroRecord> records = data();
-    records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, this.avroSchema.toString());
+    records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, this.writeConfig);
     GenericRecord record = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) records.get(0).getData()).recordBytes, this.avroSchema);
     System.out.println("======================================================================================");
     System.out.println("last: " + record);
@@ -94,15 +104,13 @@ public class FlinkWriteHelperTest {
       row2.put("_ts2", ts);
       records.add(row1);
       records.add(row2);
-      Thread.sleep(1);
+      //Thread.sleep(1);
     }
 
     return records.stream().map(genericRowData -> {
       try {
-        String orderingFieldValText = HoodieAvroUtils.getMultipleNestedFieldVals(genericRowData,
-            preCombineFields, false).toString();
         return new HoodieAvroRecord(new HoodieKey("1", "default"),
-            new PartialUpdateAvroPayload(genericRowData, orderingFieldValText), HoodieOperation.INSERT);
+            new PartialUpdateAvroPayload(Option.of(genericRowData)), HoodieOperation.INSERT);
       } catch (Exception e) {
         throw new RuntimeException(e);
       }

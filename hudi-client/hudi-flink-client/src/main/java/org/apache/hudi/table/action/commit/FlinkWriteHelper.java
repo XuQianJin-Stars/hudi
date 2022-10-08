@@ -27,6 +27,7 @@ import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.WriteOperationType;
+import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.HoodieTable;
@@ -37,7 +38,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
@@ -89,7 +89,7 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
 
   @Override
   public List<HoodieRecord<T>> deduplicateRecords(
-      List<HoodieRecord<T>> records, HoodieIndex<?, ?> index, int parallelism, String schemaString) {
+      List<HoodieRecord<T>> records, HoodieIndex<?, ?> index, int parallelism, HoodieWriteConfig writeConfig) {
     // If index used is global, then records are expected to differ in their partitionPath
     Map<Object, List<HoodieRecord<T>>> keyedRecords = records.stream()
         .collect(Collectors.groupingBy(record -> record.getKey().getRecordKey()));
@@ -98,9 +98,7 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
       final T data1 = rec1.getData();
       final T data2 = rec2.getData();
 
-      Properties properties = new Properties();
-      properties.put("schema", schemaString);
-      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, properties);
+      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, writeConfig.getProps());
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.
