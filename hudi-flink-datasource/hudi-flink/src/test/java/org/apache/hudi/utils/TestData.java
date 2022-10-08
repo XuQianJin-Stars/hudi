@@ -68,6 +68,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.HashSet;
 import java.util.List;
@@ -555,6 +556,65 @@ public class TestData {
   }
 
   /**
+   * Checks the source data are written as expected.
+   *
+   * <p>Note: Replace it with the Flink reader when it is supported.
+   *
+   * @param basePath The file base to check, should be a directory
+   * @param expected The expected results mapping, the key should be the partition path
+   */
+  public static void checkWrittenFullData(
+      File basePath,
+      Map<String, List<String>> expected) throws IOException {
+    checkWrittenFullDataFunction(basePath, expected, FILTER_OUT_VARIABLES_FUNCTION);
+  }
+
+
+  /**
+   * Checks the source data are written as expected.
+   *
+   * <p>Note: Replace it with the Flink reader when it is supported.
+   *
+   * @param basePath The file base to check, should be a directory
+   * @param expected The expected results mapping, the key should be the partition path
+   */
+  public static void checkWrittenFullDataFunction(
+      File basePath,
+      Map<String, List<String>> expected,
+      Function<GenericRecord, String> creator) throws IOException {
+
+    // 1. init flink table
+    HoodieTableMetaClient metaClient = HoodieTestUtils.init(basePath.getAbsolutePath());
+    HoodieWriteConfig config = HoodieWriteConfig.newBuilder().withPath(basePath.getAbsolutePath()).build();
+    HoodieFlinkTable table = HoodieFlinkTable.create(config, HoodieFlinkEngineContext.DEFAULT, metaClient);
+
+    // 2. check each partition data
+    expected.forEach((partition, partitionDataSet) -> {
+
+      List<String> readBuffer = new ArrayList<>();
+      table.getBaseFileOnlyView().getLatestBaseFiles(partition)
+          .forEach(baseFile -> {
+            String path = baseFile.getPath();
+            try {
+              ParquetReader<GenericRecord> reader = AvroParquetReader.<GenericRecord>builder(new Path(path)).build();
+              GenericRecord nextRecord = reader.read();
+              while (nextRecord != null) {
+                String value = creator.apply(nextRecord);
+                readBuffer.add(value);
+                nextRecord = reader.read();
+              }
+            } catch (IOException e) {
+              throw new RuntimeException(e);
+            }
+          });
+
+      assertTrue(partitionDataSet.size() == readBuffer.size() && partitionDataSet.containsAll(readBuffer));
+
+    });
+
+  }
+
+  /**
    * Checks the source data set are written as expected.
    *
    * <p>Note: Replace it with the Flink reader when it is supported.
@@ -711,8 +771,8 @@ public class TestData {
     assert hoodiePropertiesFile.exists();
     // 1. init flink table
     HoodieWriteConfig config = HoodieWriteConfig.newBuilder()
-            .fromFile(hoodiePropertiesFile)
-            .withPath(basePath).build();
+        .fromFile(hoodiePropertiesFile)
+        .withPath(basePath).build();
     HoodieTableMetaClient metaClient = HoodieTestUtils.init(basePath, HoodieTableType.MERGE_ON_READ, config.getProps());
     HoodieFlinkTable<?> table = HoodieFlinkTable.create(config, HoodieFlinkEngineContext.DEFAULT, metaClient);
     Schema schema = new TableSchemaResolver(metaClient).getTableAvroSchema();
@@ -768,8 +828,8 @@ public class TestData {
           for (String curKey : scanner.getRecords().keySet()) {
             if (!keyToSkip.contains(curKey)) {
               Option<GenericRecord> record = (Option<GenericRecord>) scanner.getRecords()
-                      .get(curKey).getData()
-                      .getInsertValue(schema, config.getProps());
+                  .get(curKey).getData()
+                  .getInsertValue(schema, config.getProps());
               if (record.isPresent()) {
                 readBuffer.add(filterOutVariables(record.get()));
               }
@@ -808,6 +868,9 @@ public class TestData {
         .build();
   }
 
+  private static Function<GenericRecord, String> FILTER_OUT_VARIABLES_FUNCTION =
+      genericRecord -> filterOutVariables(genericRecord);
+
   /**
    * Filter out the variables like file name.
    */
@@ -820,7 +883,7 @@ public class TestData {
     fields.add(genericRecord.get("age").toString());
     fields.add(genericRecord.get("ts").toString());
     fields.add(genericRecord.get("partition").toString());
-    return String.join(",",fields);
+    return String.join(",", fields);
   }
 
   public static BinaryRowData insertRow(Object... fields) {

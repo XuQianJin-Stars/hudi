@@ -21,6 +21,7 @@ package org.apache.hudi.table;
 import org.apache.hudi.common.model.DefaultHoodieRecordPayload;
 import org.apache.hudi.common.model.EventTimeAvroPayload;
 import org.apache.hudi.common.model.WriteOperationType;
+import org.apache.hudi.common.model.partial.update.MultiplePartialUpdateUnit;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.OptionsResolver;
@@ -154,8 +155,8 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
         conf.setString(FlinkOptions.PRECOMBINE_FIELD, FlinkOptions.NO_PRE_COMBINE);
       } else if (preCombineField.contains(";")) {
         // pre_combine key is in multi_ordering format (e.g. _ts1:name1,price1;_ts2:name2,price2)
-        Arrays.stream(preCombineField.split(";"))
-            .filter(f -> !fields.contains(f.split(":")[0]))
+        new MultiplePartialUpdateUnit(preCombineField)
+            .getAllColumns().stream().filter(field -> !fields.contains(field))
             .findAny()
             .ifPresent(f -> {
               throw new HoodieValidationException("Field " + preCombineField + " does not exist in the table schema."
