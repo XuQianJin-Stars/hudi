@@ -18,12 +18,12 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.hudi.avro.HoodieAvroUtils;
+import org.apache.hudi.common.util.Option;
+
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
-
-import org.apache.hudi.avro.HoodieAvroUtils;
-import org.apache.hudi.common.util.Option;
 
 import java.io.IOException;
 import java.util.Map;
@@ -90,55 +90,29 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     }
 
     // Perform a deserialization again to prevent resultRecord from sharing the same reference as recordOption
-    GenericRecord resultRecord = (GenericRecord) getInsertValue(schema).get();
+    GenericRecord resultRecord = (GenericRecord) incomingRecord.get();
 
     Map<String, Schema.Field> name2Field = schema.getFields().stream().collect(Collectors.toMap(Schema.Field::name, item -> item));
     // multipleOrderingFieldsWithCols = _ts1:name1,price1=999;_ts2:name2,price2=;
 
-    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(multipleOrderingFieldsWithCols);
+    MultiplePartialUpdateUnit multiplePartialUpdateUnit = new MultiplePartialUpdateUnit(multipleOrderingFieldsWithCols);
     final Boolean[] deleteFlag = new Boolean[1];
     deleteFlag[0] = false;
-    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().forEach(orderingVal2ColsInfo -> {
-      String persistOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(
-          (GenericRecord) currentValue, orderingVal2ColsInfo.getOrderingField(), true, false);
-      if (persistOrderingVal == null) {
-        persistOrderingVal = "";
-      }
-
-      // No update required
-      if (persistOrderingVal.isEmpty() && orderingVal2ColsInfo.getOrderingField().isEmpty()) {
-        return;
-      }
-
-      // Pick the payload with greatest ordering value as insert record
-      boolean needUpdatePersistData = false;
-      try {
-        if (persistOrderingVal == null || (orderingVal2ColsInfo.getOrderingValue() != null
-            && persistOrderingVal.compareTo(orderingVal2ColsInfo.getOrderingValue()) <= 0)) {
-          needUpdatePersistData = true;
-        }
-      } catch (NumberFormatException e) {
-        if (persistOrderingVal.compareTo(orderingVal2ColsInfo.getOrderingValue()) < 0) {
-          needUpdatePersistData = true;
-        }
-      }
+    multiplePartialUpdateUnit.getMultiplePartialUpdateUnits().forEach(orderingVal2ColsInfo -> {
 
       // Initialise the fields of the sub-tables
-      GenericRecord insertRecord;
-      if (!needUpdatePersistData) {
+      GenericRecord insertRecord = resultRecord;
+      boolean needUseOldRecordToUpdate = needUseOldRecordToUpdate((GenericRecord) currentValue, orderingVal2ColsInfo);
+      if (needUseOldRecordToUpdate) {
         insertRecord = (GenericRecord) currentValue;
         // resultRecord is already assigned as recordOption
+        GenericRecord finalInsertRecord = insertRecord;
         orderingVal2ColsInfo.getColumnNames().stream()
             .filter(name2Field::containsKey)
-            .forEach(fieldName -> resultRecord.put(fieldName, insertRecord.get(fieldName)));
-        resultRecord.put(orderingVal2ColsInfo.getOrderingField(), Long.parseLong(persistOrderingVal));
-      } else {
-        insertRecord = (GenericRecord) incomingRecord.get();
-        orderingVal2ColsInfo.getColumnNames().stream()
-            .filter(name2Field::containsKey)
-            .forEach(fieldName -> resultRecord.put(fieldName, insertRecord.get(fieldName)));
+            .forEach(fieldName -> resultRecord.put(fieldName, finalInsertRecord.get(fieldName)));
+        String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(finalInsertRecord, orderingVal2ColsInfo.getOrderingField(), true, false);
+        resultRecord.put(orderingVal2ColsInfo.getOrderingField(), Long.parseLong(oldOrderingVal));
       }
-
       // If any of the sub-table records is flagged for deletion, delete entire row
       if (isDeleteRecord(insertRecord)) {
         deleteFlag[0] = true;
@@ -156,6 +130,13 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     return this.combineAndGetUpdateValue(currentValue, schema, this.orderingVal.toString());
   }
 
+  public boolean needUseOldRecordToUpdate(GenericRecord oldRecord, MultiplePartialUpdateUnit.PartialUpdateUnit partialUpdateUnit) {
+    String orderingField = partialUpdateUnit.getOrderingField();
+    String incomingOrderingVal = partialUpdateUnit.getOrderingField();
+    String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(oldRecord, orderingField, true, false);
+    return Objects.nonNull(oldOrderingVal) && Objects.nonNull(incomingOrderingVal) && oldOrderingVal.compareTo(incomingOrderingVal) > 0;
+  }
+
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties prop) throws IOException {
     Option<IndexedRecord> recordOption = getInsertValue(schema);
@@ -168,8 +149,8 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
   }
 
   private static String rebuildWithNewOrderingVal(GenericRecord record, String orderingFieldWithColsText) {
-    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(orderingFieldWithColsText);
-    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().forEach(orderingVal2ColsInfo -> {
+    MultiplePartialUpdateUnit multipleOrderingVal2ColsInfo = new MultiplePartialUpdateUnit(orderingFieldWithColsText);
+    multipleOrderingVal2ColsInfo.getMultiplePartialUpdateUnits().forEach(orderingVal2ColsInfo -> {
       Object orderingVal = record.get(orderingVal2ColsInfo.getOrderingField());
       if (Objects.nonNull(orderingVal)) {
         orderingVal2ColsInfo.setOrderingValue(orderingVal.toString());
@@ -177,7 +158,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
         orderingVal2ColsInfo.setOrderingValue("-1");
       }
     });
-    return multipleOrderingVal2ColsInfo.generateOrderingText();
+    return multipleOrderingVal2ColsInfo.toString();
   }
 
   /**

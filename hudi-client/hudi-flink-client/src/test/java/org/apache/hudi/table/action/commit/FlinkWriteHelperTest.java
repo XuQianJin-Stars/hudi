@@ -99,7 +99,7 @@ public class FlinkWriteHelperTest {
 
     return records.stream().map(genericRowData -> {
       try {
-        String orderingFieldValText = HoodieAvroUtils.getMultipleNestedFieldVals(genericRowData,
+        String orderingFieldValText = HoodieAvroUtils.getMultipleOrderingVals(genericRowData,
             preCombineFields, false).toString();
         return new HoodieAvroRecord(new HoodieKey("1", "default"),
             new PartialUpdateAvroPayload(genericRowData, orderingFieldValText), HoodieOperation.INSERT);

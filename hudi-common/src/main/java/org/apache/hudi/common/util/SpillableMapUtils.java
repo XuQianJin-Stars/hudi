@@ -157,7 +157,7 @@ public class SpillableMapUtils {
     }
     // Handle multiple ordering/preCombineFields
     if (preCombineField.contains(";")) {
-      return HoodieAvroUtils.getMultipleNestedFieldVals(rec, preCombineField, false);
+      return HoodieAvroUtils.getMultipleOrderingVals(rec, preCombineField, false);
     } else {
       Schema.Field field = rec.getSchema().getField(preCombineField);
       return field == null ? 0 : rec.get(field.pos());
