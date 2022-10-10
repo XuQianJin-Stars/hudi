@@ -22,7 +22,7 @@ import org.apache.hudi.common.config.SerializableSchema;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.model.MultipleOrderingVal2ColsInfo;
+import org.apache.hudi.common.model.MultiplePartialUpdateUnit;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.collection.Pair;
@@ -498,14 +498,14 @@ public class HoodieAvroUtils {
   }
 
   public static Object getMultipleNestedFieldVals(GenericRecord record, String fieldMappings, boolean consistentLogicalTimestampEnabled) {
-    MultipleOrderingVal2ColsInfo multipleOrderingVal2ColsInfo = new MultipleOrderingVal2ColsInfo(fieldMappings);
-    multipleOrderingVal2ColsInfo.getOrderingVal2ColsInfoList().forEach(orderingVal2ColsInfo -> {
+    MultiplePartialUpdateUnit multipleOrderingVal2ColsInfo = new MultiplePartialUpdateUnit(fieldMappings);
+    multipleOrderingVal2ColsInfo.getMultiplePartialUpdateUnits().forEach(orderingVal2ColsInfo -> {
       Object val = getNestedFieldVal(record, orderingVal2ColsInfo.getOrderingField(), true, consistentLogicalTimestampEnabled);
       if (Objects.nonNull(val)) {
         orderingVal2ColsInfo.setOrderingValue(val.toString());
       }
     });
-    return multipleOrderingVal2ColsInfo.generateOrderingText();
+    return multipleOrderingVal2ColsInfo.toString();
   }
 
   /**
