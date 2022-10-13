@@ -22,7 +22,6 @@ import org.apache.hudi.common.config.SerializableSchema;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.model.MultiplePartialUpdateUnit;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.collection.Pair;
@@ -495,17 +494,6 @@ public class HoodieAvroUtils {
   public static Object getNestedFieldValAsString(GenericRecord record, String fieldName) {
     Object obj = getNestedFieldVal(record, fieldName, true, false);
     return obj == null ? "" : StringUtils.objToString(obj);
-  }
-
-  public static Object getMultipleNestedFieldVals(GenericRecord record, String fieldMappings, boolean consistentLogicalTimestampEnabled) {
-    MultiplePartialUpdateUnit multipleOrderingVal2ColsInfo = new MultiplePartialUpdateUnit(fieldMappings);
-    multipleOrderingVal2ColsInfo.getMultiplePartialUpdateUnits().forEach(orderingVal2ColsInfo -> {
-      Object val = getNestedFieldVal(record, orderingVal2ColsInfo.getOrderingField(), true, consistentLogicalTimestampEnabled);
-      if (Objects.nonNull(val)) {
-        orderingVal2ColsInfo.setOrderingValue(val.toString());
-      }
-    });
-    return multipleOrderingVal2ColsInfo.toString();
   }
 
   /**

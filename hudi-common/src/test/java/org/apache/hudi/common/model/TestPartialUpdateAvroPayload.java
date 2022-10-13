@@ -137,8 +137,8 @@ public class TestPartialUpdateAvroPayload {
     payload1 = new PartialUpdateAvroPayload(record1, "_ts1=5:name1,price1;_ts2=4:name2,price2");
     payload2 = new PartialUpdateAvroPayload(record2, "_ts1=4:name1,price1;_ts2=5:name2,price2");
 
-    PartialUpdateAvroPayload preCombineRes1 = payload1.preCombine(payload2, properties);
-    PartialUpdateAvroPayload preCombineRes2 = payload2.preCombine(payload1, properties);
+    PartialUpdateAvroPayload preCombineRes1 = payload1.preCombine(payload2,schema, properties);
+    PartialUpdateAvroPayload preCombineRes2 = payload2.preCombine(payload1,schema, properties);
 
     String expOrderingVal = "_ts1=5:name1,price1;_ts2=5:name2,price2";
     PartialUpdateAvroPayload expPrecombineRes =

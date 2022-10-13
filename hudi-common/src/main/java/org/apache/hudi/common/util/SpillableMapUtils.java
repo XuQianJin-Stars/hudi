@@ -18,7 +18,6 @@
 
 package org.apache.hudi.common.util;
 
-import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.fs.SizeAwareDataOutputStream;
 import org.apache.hudi.common.model.HoodieAvroRecord;
 import org.apache.hudi.common.model.HoodieKey;
@@ -155,13 +154,8 @@ public class SpillableMapUtils {
     if (preCombineField == null) {
       return 0;
     }
-    // Handle multiple ordering/preCombineFields
-    if (preCombineField.contains(";")) {
-      return HoodieAvroUtils.getMultipleNestedFieldVals(rec, preCombineField, false);
-    } else {
-      Schema.Field field = rec.getSchema().getField(preCombineField);
-      return field == null ? 0 : rec.get(field.pos());
-    }
+    Schema.Field field = rec.getSchema().getField(preCombineField);
+    return field == null ? 0 : rec.get(field.pos());
   }
 
   /**

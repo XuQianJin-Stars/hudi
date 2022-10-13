@@ -16,8 +16,9 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.common.model;
+package org.apache.hudi.common.model.partial.update;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -38,6 +39,15 @@ public class MultiplePartialUpdateUnit {
         .map(PartialUpdateUnit::new).collect(Collectors.toList());
   }
 
+  public List<String> getAllColumns() {
+    List<String> allColumns = new ArrayList<>();
+    this.getMultiplePartialUpdateUnits().forEach(partialUpdateUnit -> {
+      allColumns.add(partialUpdateUnit.getOrderingField());
+      allColumns.addAll(partialUpdateUnit.getColumnNames());
+    });
+    return allColumns;
+  }
+
   public List<PartialUpdateUnit> getMultiplePartialUpdateUnits() {
     return multiplePartialUpdateUnits;
   }
@@ -48,14 +58,9 @@ public class MultiplePartialUpdateUnit {
     private List<String> columnNames;
 
     public PartialUpdateUnit(String partialUpdateUnitText) {
-      String splitterPattern = partialUpdateUnitText.matches("=|:|,") ? "=|:|," : ":|,";
-      List<String> partialUpdateList = Arrays.asList(partialUpdateUnitText.split(splitterPattern));
+      List<String> partialUpdateList = Arrays.asList(partialUpdateUnitText.split(":|,"));
       this.orderingField = partialUpdateList.get(0);
-      if (partialUpdateList.size() > 2) {
-        this.orderingValue = partialUpdateList.get(1);
-      } else {
-        this.columnNames = partialUpdateList.subList(1, partialUpdateList.size());
-      }
+      this.columnNames = partialUpdateList.subList(1, partialUpdateList.size());
     }
 
     public String getOrderingField() {

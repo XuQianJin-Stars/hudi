@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.action.commit;
 
+import org.apache.avro.Schema;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.data.HoodieListData;
 import org.apache.hudi.common.engine.HoodieEngineContext;
@@ -98,9 +99,8 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends BaseWrit
       final T data1 = rec1.getData();
       final T data2 = rec2.getData();
 
-      Properties properties = new Properties();
-      properties.put("schema", schemaString);
-      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, properties);
+      final Schema schema = new Schema.Parser().parse(schemaString);
+      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, schema, new Properties());
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.

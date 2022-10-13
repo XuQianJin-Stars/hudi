@@ -19,31 +19,76 @@
 package org.apache.hudi.common.model;
 
 import org.apache.hudi.avro.HoodieAvroUtils;
+import org.apache.hudi.common.model.partial.update.MultiplePartialUpdateHelper;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.ReflectionUtils;
+import org.apache.hudi.common.util.StringUtils;
+import org.apache.hudi.keygen.constant.KeyGeneratorOptions;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.GenericRecordBuilder;
 import org.apache.avro.generic.IndexedRecord;
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.Objects;
+import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 /**
- * subclass of OverwriteNonDefaultsWithLatestAvroPayload used for delta streamer.
+ * Payload clazz that is used for partial update Hudi Table.
  *
- * <ol>
- * <li>preCombine - Picks the latest delta record for a key, based on an ordering field;
- * <li>combineAndGetUpdateValue/getInsertValue - overwrite storage for specified fields
- * that doesn't equal defaultValue.
- * </ol>
+ * <p>Simplified partial update Logic:
+ * <pre>
+ *  1. #preCombine
+ *  For records with the same record key in one batch
+ *  or in the delta logs that belongs to same File Group,
+ *  Checks whether one record's ordering value is larger than the other record.
+ *  If yes, overwrites the existing one for specified fields that doesn't equal to null.
+ *
+ *  2. #combineAndGetUpdateValue
+ *  For every incoming record with existing record in storage (same record key)
+ *  Checks whether incoming record's ordering value is larger than the existing record.
+ *  If yes, overwrites the existing one for specified fields that doesn't equal to null.
+ *  else overwrites the incoming one with the existing record for specified fields that doesn't equal to null
+ *  and returns a merged record.
+ *
+ *  Illustration with simple data.
+ *  let's say the order field is 'ts' and schema is :
+ *  {
+ *    [
+ *      {"name":"id","type":"string"},
+ *      {"name":"ts","type":"long"},
+ *      {"name":"name","type":"string"},
+ *      {"name":"price","type":"string"}
+ *    ]
+ *  }
+ *
+ *  case 1
+ *  Current data:
+ *      id      ts      name    price
+ *      1       1       name_1  price_1
+ *  Insert data:
+ *      id      ts      name    price
+ *      1       2       null    price_2
+ *
+ *  Result data after #preCombine or #combineAndGetUpdateValue:
+ *      id      ts      name    price
+ *      1       2       name_1  price_2
+ *
+ *  case 2
+ *  Current data:
+ *      id      ts      name    price
+ *      1       2       name_1  null
+ *  Insert data:
+ *      id      ts      name    price
+ *      1       1       null    price_1
+ *
+ *  Result data after preCombine or combineAndGetUpdateValue:
+ *      id      ts      name    price
+ *      1       2       name_1  price_1
+ *</pre>
  */
-public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
-
-  public static ConcurrentHashMap<String, Schema> schemaRepo = new ConcurrentHashMap<>();
+public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload implements MultiplePartialUpdateHelper {
 
   public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
     super(record, orderingVal);
@@ -54,27 +99,27 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
   }
 
   @Override
-  public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Properties properties) {
-    String schemaStringIn = properties.getProperty("schema");
-    Schema schemaInstance;
-    if (!schemaRepo.containsKey(schemaStringIn)) {
-      schemaInstance = new Schema.Parser().parse(schemaStringIn);
-      schemaRepo.put(schemaStringIn, schemaInstance);
-    } else {
-      schemaInstance = schemaRepo.get(schemaStringIn);
-    }
+  public PartialUpdateAvroPayload preCombine(OverwriteWithLatestAvroPayload oldValue, Schema schema, Properties properties) {
     if (oldValue.recordBytes.length == 0) {
       // use natural order for delete record
       return this;
     }
 
     try {
-      GenericRecord indexedOldValue = (GenericRecord) oldValue.getInsertValue(schemaInstance).get();
-      Option<IndexedRecord> optValue = combineAndGetUpdateValue(indexedOldValue, schemaInstance, this.orderingVal.toString());
-      // Rebuild ordering value if required
-      String newOrderingFieldWithColsText = rebuildWithNewOrderingVal((GenericRecord) optValue.get(), this.orderingVal.toString());
-      if (optValue.isPresent()) {
-        return new PartialUpdateAvroPayload((GenericRecord) optValue.get(), newOrderingFieldWithColsText);
+      Option<IndexedRecord> oldIndexedValue = oldValue.getInsertValue(schema);
+      if (isMultipleOrderFields(this.orderingVal.toString())) {
+        Option<IndexedRecord> incomingRecord = getInsertValue(schema);
+        Option<IndexedRecord> mergedRecord = preCombineMultiplePartialUpdate(oldIndexedValue, incomingRecord, schema, this.orderingVal, properties);
+        if (mergedRecord.isPresent()) {
+          return new PartialUpdateAvroPayload(Option.of((GenericRecord) mergedRecord.get()));
+        }
+      }
+      // pick the payload with greater ordering value as insert record
+      final boolean shouldPickOldRecord = oldValue.orderingVal.compareTo(orderingVal) > 0;
+      Option<IndexedRecord> mergedRecord = mergeOldRecord(oldIndexedValue.get(), schema, shouldPickOldRecord);
+      if (mergedRecord.isPresent()) {
+        return new PartialUpdateAvroPayload((GenericRecord) mergedRecord.get(),
+            shouldPickOldRecord ? oldValue.orderingVal : this.orderingVal);
       }
     } catch (Exception ex) {
       return this;
@@ -82,83 +127,18 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     return this;
   }
 
-  public Option<IndexedRecord> combineAndGetUpdateValue(
-      IndexedRecord currentValue, Schema schema, String multipleOrderingFieldsWithCols) throws IOException {
-    Option<IndexedRecord> incomingRecord = getInsertValue(schema);
-    if (!incomingRecord.isPresent()) {
-      return Option.empty();
-    }
-
-    // Perform a deserialization again to prevent resultRecord from sharing the same reference as recordOption
-    GenericRecord resultRecord = (GenericRecord) incomingRecord.get();
-
-    Map<String, Schema.Field> name2Field = schema.getFields().stream().collect(Collectors.toMap(Schema.Field::name, item -> item));
-    // multipleOrderingFieldsWithCols = _ts1:name1,price1=999;_ts2:name2,price2=;
-
-    MultiplePartialUpdateUnit multiplePartialUpdateUnit = new MultiplePartialUpdateUnit(multipleOrderingFieldsWithCols);
-    final Boolean[] deleteFlag = new Boolean[1];
-    deleteFlag[0] = false;
-    multiplePartialUpdateUnit.getMultiplePartialUpdateUnits().forEach(orderingVal2ColsInfo -> {
-
-      // Initialise the fields of the sub-tables
-      GenericRecord insertRecord = resultRecord;
-      boolean needUseOldRecordToUpdate = needUseOldRecordToUpdate((GenericRecord) currentValue, orderingVal2ColsInfo);
-      if (needUseOldRecordToUpdate) {
-        insertRecord = (GenericRecord) currentValue;
-        // resultRecord is already assigned as recordOption
-        GenericRecord finalInsertRecord = insertRecord;
-        orderingVal2ColsInfo.getColumnNames().stream()
-            .filter(name2Field::containsKey)
-            .forEach(fieldName -> resultRecord.put(fieldName, finalInsertRecord.get(fieldName)));
-        String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(finalInsertRecord, orderingVal2ColsInfo.getOrderingField(), true, false);
-        resultRecord.put(orderingVal2ColsInfo.getOrderingField(), Long.parseLong(oldOrderingVal));
-      }
-      // If any of the sub-table records is flagged for deletion, delete entire row
-      if (isDeleteRecord(insertRecord)) {
-        deleteFlag[0] = true;
-      }
-    });
-
-    if (deleteFlag[0]) {
-      return Option.empty();
-    }
-    return Option.of(resultRecord);
-  }
-
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
-    return this.combineAndGetUpdateValue(currentValue, schema, this.orderingVal.toString());
-  }
-
-  public boolean needUseOldRecordToUpdate(GenericRecord oldRecord, MultiplePartialUpdateUnit.PartialUpdateUnit partialUpdateUnit) {
-    String orderingField = partialUpdateUnit.getOrderingField();
-    String incomingOrderingVal = partialUpdateUnit.getOrderingField();
-    String oldOrderingVal = HoodieAvroUtils.getNestedFieldValAsString(oldRecord, orderingField, true, false);
-    return Objects.nonNull(oldOrderingVal) && Objects.nonNull(incomingOrderingVal) && oldOrderingVal.compareTo(incomingOrderingVal) > 0;
+    return isMultipleOrderFields(this.orderingVal.toString())
+      ? combineAndGetUpdateValue(currentValue, getInsertValue(schema), schema, this.orderingVal)
+      : this.mergeOldRecord(currentValue, schema, false);
   }
 
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties prop) throws IOException {
-    Option<IndexedRecord> recordOption = getInsertValue(schema);
-    if (!recordOption.isPresent()) {
-      return Option.empty();
-    }
-    String orderingFieldWithColsText = rebuildWithNewOrderingVal(
-        (GenericRecord) recordOption.get(), this.orderingVal.toString());
-    return combineAndGetUpdateValue(currentValue, schema, orderingFieldWithColsText);
-  }
-
-  private static String rebuildWithNewOrderingVal(GenericRecord record, String orderingFieldWithColsText) {
-    MultiplePartialUpdateUnit multipleOrderingVal2ColsInfo = new MultiplePartialUpdateUnit(orderingFieldWithColsText);
-    multipleOrderingVal2ColsInfo.getMultiplePartialUpdateUnits().forEach(orderingVal2ColsInfo -> {
-      Object orderingVal = record.get(orderingVal2ColsInfo.getOrderingField());
-      if (Objects.nonNull(orderingVal)) {
-        orderingVal2ColsInfo.setOrderingValue(orderingVal.toString());
-      } else {
-        orderingVal2ColsInfo.setOrderingValue("-1");
-      }
-    });
-    return multipleOrderingVal2ColsInfo.toString();
+    return isMultipleOrderFields(this.orderingVal.toString())
+      ? combineAndGetUpdateValue(currentValue, getInsertValue(schema), schema, this.orderingVal, prop)
+      : mergeOldRecord(currentValue, schema, isRecordNewer(orderingVal, currentValue, prop));
   }
 
   /**
@@ -166,5 +146,95 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
    */
   public Boolean overwriteField(Object value, Object defaultValue) {
     return value == null;
+  }
+
+  // -------------------------------------------------------------------------
+  //  Utilities
+  // -------------------------------------------------------------------------
+
+  private Option<IndexedRecord> mergeOldRecord(IndexedRecord oldRecord,
+      Schema schema,
+      boolean isOldRecordNewer) throws IOException {
+    Option<IndexedRecord> recordOption = getInsertValue(schema);
+
+    if (!recordOption.isPresent()) {
+      // use natural order for delete record
+      return Option.empty();
+    }
+
+    if (isOldRecordNewer && schema.getField(HoodieRecord.COMMIT_TIME_METADATA_FIELD) != null) {
+      // handling disorder, should use the metadata fields of the updating record
+      return mergeDisorderRecordsWithMetadata(schema, (GenericRecord) oldRecord, (GenericRecord) recordOption.get());
+    } else if (isOldRecordNewer) {
+      return mergeRecords(schema, (GenericRecord) oldRecord, (GenericRecord) recordOption.get());
+    } else {
+      return mergeRecords(schema, (GenericRecord) recordOption.get(), (GenericRecord) oldRecord);
+    }
+  }
+
+  /**StreamWriteFunction
+   * Merges the given disorder records with metadata.
+   *
+   * @param schema         The record schema
+   * @param oldRecord      The current record from file
+   * @param updatingRecord The incoming record
+   *
+   * @return the merged record option
+   */
+  protected Option<IndexedRecord> mergeDisorderRecordsWithMetadata(
+      Schema schema,
+      GenericRecord oldRecord,
+      GenericRecord updatingRecord) {
+    if (isDeleteRecord(oldRecord)) {
+      return Option.empty();
+    } else {
+      final GenericRecordBuilder builder = new GenericRecordBuilder(schema);
+      List<Schema.Field> fields = schema.getFields();
+      fields.forEach(field -> {
+        final GenericRecord baseRecord;
+        final GenericRecord mergedRecord;
+        if (HoodieRecord.HOODIE_META_COLUMNS_NAME_TO_POS.containsKey(field.name())) {
+          // this is a metadata field
+          baseRecord = updatingRecord;
+          mergedRecord = oldRecord;
+        } else {
+          baseRecord = oldRecord;
+          mergedRecord = updatingRecord;
+        }
+        setField(baseRecord, mergedRecord, builder, field);
+      });
+      return Option.of(builder.build());
+    }
+  }
+
+  /**
+   * Returns whether the given record is newer than the record of this payload.
+   *
+   * @param orderingVal
+   * @param record The record
+   * @param prop   The payload properties
+   *
+   * @return true if the given record is newer
+   */
+  private static boolean isRecordNewer(Comparable orderingVal, IndexedRecord record, Properties prop) {
+    String orderingField = prop.getProperty(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY);
+    if (!StringUtils.isNullOrEmpty(orderingField)) {
+      boolean consistentLogicalTimestampEnabled = Boolean.parseBoolean(prop.getProperty(
+          KeyGeneratorOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.key(),
+          KeyGeneratorOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.defaultValue()));
+
+      Comparable oldOrderingVal =
+          (Comparable) HoodieAvroUtils.getNestedFieldVal(
+              (GenericRecord) record,
+              orderingField,
+              true,
+              consistentLogicalTimestampEnabled);
+
+      // pick the payload with greater ordering value as insert record
+      return oldOrderingVal != null
+          && ReflectionUtils.isSameClass(oldOrderingVal, orderingVal)
+          && oldOrderingVal.compareTo(orderingVal) > 0;
+    }
+    return false;
   }
 }

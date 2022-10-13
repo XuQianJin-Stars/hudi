@@ -291,17 +291,11 @@ object HoodieSparkSqlWriter {
               val processedRecord = getProcessedRecord(partitionColumns, gr, dropPartitionColumns)
               val hoodieRecord = if (shouldCombine) {
                 val preCombineField = hoodieConfig.getString(PRECOMBINE_FIELD)
-                val orderingVal = if (preCombineField.contains(";")) {
-                  HoodieAvroUtils.getMultipleNestedFieldVals(gr, preCombineField, parameters.getOrElse(
-                    DataSourceWriteOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.key(),
-                    DataSourceWriteOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.defaultValue()).toBoolean)
-                    .asInstanceOf[Comparable[_]]
-                } else {
-                  HoodieAvroUtils.getNestedFieldVal(gr, preCombineField, false, parameters.getOrElse(
-                    DataSourceWriteOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.key(),
-                    DataSourceWriteOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.defaultValue()).toBoolean)
-                    .asInstanceOf[Comparable[_]]
-                }
+                val orderingVal = if (preCombineField.split(":").length > 1) preCombineField
+                else HoodieAvroUtils.getNestedFieldVal(gr, hoodieConfig.getString(PRECOMBINE_FIELD), false, parameters.getOrElse(
+                  DataSourceWriteOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.key(),
+                  DataSourceWriteOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED.defaultValue()).toBoolean)
+                  .asInstanceOf[Comparable[_]]
                 DataSourceUtils.createHoodieRecord(processedRecord,
                   orderingVal,
                   keyGenerator.getKey(gr),

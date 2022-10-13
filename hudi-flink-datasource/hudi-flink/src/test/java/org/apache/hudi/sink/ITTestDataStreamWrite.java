@@ -18,13 +18,23 @@
 
 package org.apache.hudi.sink;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.hudi.avro.HoodieAvroUtils;
+import org.apache.hudi.common.model.HoodieAvroRecord;
+import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieTableType;
+import org.apache.hudi.common.model.PartialUpdateAvroPayload;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.configuration.FlinkOptions;
+import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.sink.transform.ChainedTransformer;
 import org.apache.hudi.sink.transform.Transformer;
 import org.apache.hudi.sink.utils.Pipelines;
+import org.apache.hudi.table.action.commit.FlinkWriteHelper;
 import org.apache.hudi.util.AvroSchemaConverter;
 import org.apache.hudi.util.HoodiePipeline;
 import org.apache.hudi.util.StreamerUtil;
@@ -58,6 +68,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -66,6 +77,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Integration test for Flink Hoodie stream sink.
@@ -430,5 +443,87 @@ public class ITTestDataStreamWrite extends TestLogger {
 
     execute(execEnv, true, "Api_Sink_Test");
     TestData.checkWrittenDataCOW(tempFile, EXPECTED);
+  }
+
+  @Test
+  void deduplicateRecords() throws IOException {
+    final String SCHEMA = "{\n"
+        + "  \"type\": \"record\",\n"
+        + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
+        + "  \"fields\": [\n"
+        + "    {\"name\": \"id\", \"type\": [\"null\", \"string\"]},\n"
+        + "    {\"name\": \"fa\", \"type\": [\"null\", \"string\"]},\n"
+        + "    {\"name\": \"fb\", \"type\": [\"null\", \"string\"]},\n"
+        + "    {\"name\": \"_ts\", \"type\": [\"null\", \"long\"]}\n"
+        + "  ]\n"
+        + "}";
+
+    String preCombineFields = "_ts";
+    List<HoodieAvroRecord> records = new ArrayList<>();
+    Schema avroSchema = new Schema.Parser().parse(SCHEMA);
+    for (int i = 1; i <= 100; i++) {
+      long ts = System.currentTimeMillis();
+      GenericRecord row1 = new GenericData.Record(avroSchema);
+      row1.put("id", "jack");
+      row1.put("fa", i + "");
+      row1.put("_ts", ts);
+      Comparable<?> orderingVal1 = (Comparable<?>) HoodieAvroUtils.getNestedFieldVal(row1,
+          preCombineFields, false, false);
+      records.add(new HoodieAvroRecord(new HoodieKey("1", "default"),
+          new PartialUpdateAvroPayload(row1, orderingVal1), HoodieOperation.INSERT));
+      ts = System.currentTimeMillis();
+      GenericRecord row2 = new GenericData.Record(avroSchema);
+      row2.put("id", "jack");
+      row2.put("fb", i + "");
+      row2.put("_ts", ts);
+      Comparable<?> orderingVal2 = (Comparable<?>) HoodieAvroUtils.getNestedFieldVal(row2,
+          preCombineFields, false, false);
+      records.add(new HoodieAvroRecord(new HoodieKey("1", "default"),
+          new PartialUpdateAvroPayload(row2, orderingVal2), HoodieOperation.INSERT));
+    }
+
+    List<HoodieRecord> deduplicateRecords = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, avroSchema.toString());
+    GenericRecord record = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) deduplicateRecords.get(0).getData()).recordBytes, avroSchema);
+    assertEquals(deduplicateRecords.size(), 1);
+    assertEquals(record.get(1).toString(), "100");
+    assertEquals(record.get(1), record.get(2));
+  }
+
+  @Test
+  void deduplicateRecordsWithMultipleOrderingFields() throws IOException {
+    String schema = "{\n"
+        + "  \"type\": \"record\",\n"
+        + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
+        + "  \"fields\": [\n"
+        + "    {\"name\": \"id\", \"type\": [\"null\", \"string\"]},\n"
+        + "    {\"name\": \"fa\", \"type\": [\"null\", \"string\"]},\n"
+        + "    {\"name\": \"_ts1\", \"type\": [\"null\", \"long\"]},\n"
+        + "    {\"name\": \"fb\", \"type\": [\"null\", \"string\"]},\n"
+        + "    {\"name\": \"_ts2\", \"type\": [\"null\", \"long\"]}\n"
+        + "  ]\n"
+        + "}";
+    String preCombineFields = "_ts1:fa;_ts2:fb";
+    List<HoodieAvroRecord> records = new ArrayList<>();
+    Schema avroSchema = new Schema.Parser().parse(schema);
+    for (int i = 1; i <= 1000; i++) {
+      long ts = System.currentTimeMillis();
+      GenericRecord row1 = new GenericData.Record(avroSchema);
+      row1.put("id", "jack");
+      row1.put("fa", i + "");
+      row1.put("_ts1", ts);
+      records.add(new HoodieAvroRecord(new HoodieKey("1", "default"),
+          new PartialUpdateAvroPayload(row1, preCombineFields), HoodieOperation.INSERT));
+      ts = System.currentTimeMillis();
+      GenericRecord row2 = new GenericData.Record(avroSchema);
+      row2.put("id", "jack");
+      row2.put("fb", i + "");
+      row2.put("_ts2", ts);
+      records.add(new HoodieAvroRecord(new HoodieKey("1", "default"),
+          new PartialUpdateAvroPayload(row2, preCombineFields), HoodieOperation.INSERT));
+    }
+    records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1, schema);
+    GenericRecord record = HoodieAvroUtils.bytesToAvro(((PartialUpdateAvroPayload) records.get(0).getData()).recordBytes, avroSchema);
+    assertEquals(record.get(1).toString(), "1000");
+    assertEquals(record.get(1), record.get(3));
   }
 }
