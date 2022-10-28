@@ -58,12 +58,6 @@ public abstract class AbstractStreamWriteFunction<I>
     implements CheckpointedFunction {
 
   private static final Logger LOG = LoggerFactory.getLogger(AbstractStreamWriteFunction.class);
-
-  /**
-   * Config options.
-   */
-  protected final Configuration config;
-
   /**
    * Id of current subtask.
    */
@@ -132,7 +126,7 @@ public abstract class AbstractStreamWriteFunction<I>
    * @param config The config options
    */
   public AbstractStreamWriteFunction(Configuration config) {
-    this.config = config;
+    super(config);
   }
 
   @Override
@@ -166,6 +160,8 @@ public abstract class AbstractStreamWriteFunction<I>
     snapshotState();
     // Reload the snapshot state as the current state.
     reloadWriteMetaState();
+    //reset event time for current checkpoint interval
+    resetEventTime();
   }
 
   public abstract void snapshotState();
@@ -225,6 +221,7 @@ public abstract class AbstractStreamWriteFunction<I>
         .instantTime(currentInstant)
         .writeStatus(new ArrayList<>(writeStatuses))
         .bootstrap(true)
+        .maxEventTime(this.currentTimeStamp)
         .build();
     this.writeMetadataState.add(event);
     writeStatuses.clear();

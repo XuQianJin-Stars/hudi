@@ -56,6 +56,7 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -147,6 +148,10 @@ public class StreamWriteOperatorCoordinator
    */
   private transient TableState tableState;
 
+  private transient Long minEventTime = Long.MAX_VALUE;
+
+  private final boolean commitEventTimeEnable;
+
   /**
    * The checkpoint metadata.
    */
@@ -165,6 +170,7 @@ public class StreamWriteOperatorCoordinator
     this.context = context;
     this.parallelism = context.currentParallelism();
     this.hiveConf = new SerializableConfiguration(HadoopConfigurations.getHiveConf(conf));
+    this.commitEventTimeEnable = Objects.nonNull(conf.get(FlinkOptions.EVENT_TIME_FIELD));
   }
 
   @Override
@@ -503,8 +509,28 @@ public class StreamWriteOperatorCoordinator
       sendCommitAckEvents(checkpointId);
       return false;
     }
+    setMinEventTime();
     doCommit(instant, writeResults);
+    resetMinEventTime();
     return true;
+  }
+
+  public void setMinEventTime() {
+    if (commitEventTimeEnable) {
+      LOG.info("[setMinEventTime] receive event time for current commit: {} ", Arrays.stream(eventBuffer).map(WriteMetadataEvent::getMaxEventTime).map(String::valueOf)
+          .collect(Collectors.joining(", ")));
+      this.minEventTime = Arrays.stream(eventBuffer)
+          .filter(Objects::nonNull)
+          .filter(maxEventTime -> maxEventTime.getMaxEventTime() > 0)
+          .map(WriteMetadataEvent::getMaxEventTime)
+          .min(Comparator.naturalOrder())
+          .map(aLong -> Math.min(aLong, this.minEventTime)).orElse(Long.MAX_VALUE);
+      LOG.info("[setMinEventTime] minEventTime: {} ", this.minEventTime);
+    }
+  }
+
+  public void resetMinEventTime() {
+    this.minEventTime = Long.MAX_VALUE;
   }
 
   /**
@@ -519,6 +545,10 @@ public class StreamWriteOperatorCoordinator
 
     if (!hasErrors || this.conf.getBoolean(FlinkOptions.IGNORE_FAILED)) {
       HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
+      if (commitEventTimeEnable) {
+        LOG.info("[doCommit] minEventTime: {} ", this.minEventTime);
+        checkpointCommitMetadata.put(FlinkOptions.EVENT_TIME_FIELD.key(), this.minEventTime.toString());
+      }
       if (hasErrors) {
         LOG.warn("Some records failed to merge but forcing commit since commitOnErrors set to true. Errors/Total="
             + totalErrorRecords + "/" + totalRecords);
