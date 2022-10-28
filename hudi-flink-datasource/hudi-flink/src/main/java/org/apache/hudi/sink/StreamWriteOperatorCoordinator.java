@@ -56,6 +56,7 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -146,6 +147,8 @@ public class StreamWriteOperatorCoordinator
    * The table state.
    */
   private transient TableState tableState;
+
+  private transient Long minEventTime = Long.MAX_VALUE;
 
   /**
    * The checkpoint metadata.
@@ -503,8 +506,17 @@ public class StreamWriteOperatorCoordinator
       sendCommitAckEvents(checkpointId);
       return false;
     }
+    setMinEventTime();
     doCommit(instant, writeResults);
     return true;
+  }
+
+  public void setMinEventTime() {
+    long minEventTime = Arrays.stream(eventBuffer)
+        .filter(Objects::nonNull)
+        .map(WriteMetadataEvent::getMaxEventTime)
+        .min(Comparator.naturalOrder()).get();
+    this.minEventTime = Math.min(minEventTime, this.minEventTime);
   }
 
   /**
@@ -519,6 +531,7 @@ public class StreamWriteOperatorCoordinator
 
     if (!hasErrors || this.conf.getBoolean(FlinkOptions.IGNORE_FAILED)) {
       HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
+      checkpointCommitMetadata.put(FlinkOptions.EVENT_TIME_FIELD.key(), this.minEventTime.toString());
       if (hasErrors) {
         LOG.warn("Some records failed to merge but forcing commit since commitOnErrors set to true. Errors/Total="
             + totalErrorRecords + "/" + totalRecords);

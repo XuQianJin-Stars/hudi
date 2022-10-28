@@ -69,6 +69,8 @@ public class BulkInsertWriteFunction<I>
    */
   private final Configuration config;
 
+  private  int eventTimeFieldIndex;
+
   /**
    * Table row type.
    */
@@ -117,6 +119,7 @@ public class BulkInsertWriteFunction<I>
     this.initInstant = lastPendingInstant();
     sendBootstrapEvent();
     initWriterHelper();
+    this.eventTimeFieldIndex = this.writeSchema.getIndexNamed(this.eventTimeField);
   }
 
   @Override
@@ -144,6 +147,7 @@ public class BulkInsertWriteFunction<I>
         .writeStatus(writeStatus)
         .lastBatch(true)
         .endInput(true)
+        .maxEventTime(this.currentTimeStamp)
         .build();
     this.eventGateway.sendEventToCoordinator(event);
   }
@@ -208,5 +212,13 @@ public class BulkInsertWriteFunction<I>
       instant = lastPendingInstant();
     }
     return instant;
+  }
+
+  @Override
+  public long extractTimestamp(I value, long currentTimeStamp) {
+    Object eventTimeVal = ((RowData) value).getLong(eventTimeFieldIndex);
+    Long eventTime = Long.parseLong(eventTimeVal.toString());
+    this.currentTimeStamp = Math.max(eventTime, this.currentTimeStamp);
+    return eventTime;
   }
 }

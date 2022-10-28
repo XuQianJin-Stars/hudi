@@ -133,6 +133,7 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
 
   @Override
   public void processElement(I value, ProcessFunction<I, Object>.Context ctx, Collector<Object> out) throws Exception {
+    extractTimestamp(value, this.currentTimeStamp);
     bufferRecord((HoodieRecord<?>) value);
   }
 
@@ -432,6 +433,7 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
         .writeStatus(writeStatus)
         .lastBatch(false)
         .endInput(false)
+        .maxEventTime(this.currentTimeStamp)
         .build();
 
     this.eventGateway.sendEventToCoordinator(event);
@@ -475,6 +477,7 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
         .writeStatus(writeStatus)
         .lastBatch(true)
         .endInput(endInput)
+        .maxEventTime(this.currentTimeStamp)
         .build();
 
     this.eventGateway.sendEventToCoordinator(event);

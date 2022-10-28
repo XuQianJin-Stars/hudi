@@ -18,9 +18,12 @@
 
 package org.apache.hudi.sink.common;
 
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.HoodieFlinkWriteClient;
 import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.common.model.HoodieAvroRecord;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.TableSchemaResolver;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.sink.StreamWriteOperatorCoordinator;
@@ -30,6 +33,7 @@ import org.apache.hudi.sink.meta.CkpMetadata;
 import org.apache.hudi.sink.utils.TimeWait;
 import org.apache.hudi.util.StreamerUtil;
 
+import org.apache.avro.generic.GenericRecord;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
@@ -43,6 +47,7 @@ import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -156,6 +161,12 @@ public abstract class AbstractStreamWriteFunction<I>
     }
     // blocks flushing until the coordinator starts a new instant
     this.confirming = true;
+    if (config.containsKey(FlinkOptions.EVENT_TIME_FIELD.key())) {
+      TableSchemaResolver tableSchemaResolver = new TableSchemaResolver(metaClient);
+      this.writeSchema = tableSchemaResolver.getTableAvroSchema(false);
+      this.currentTimeStamp = Long.MIN_VALUE;
+      this.eventTimeField = config.getString(FlinkOptions.EVENT_TIME_FIELD);
+    }
   }
 
   @Override
@@ -225,6 +236,7 @@ public abstract class AbstractStreamWriteFunction<I>
         .instantTime(currentInstant)
         .writeStatus(new ArrayList<>(writeStatuses))
         .bootstrap(true)
+        .maxEventTime(this.currentTimeStamp)
         .build();
     this.writeMetadataState.add(event);
     writeStatuses.clear();
@@ -280,5 +292,23 @@ public abstract class AbstractStreamWriteFunction<I>
    */
   private boolean invalidInstant(String instant, boolean hasData) {
     return instant.equals(this.currentInstant) && hasData;
+  }
+
+  @Override
+  public long extractTimestamp(I value, long currentTimeStamp) {
+    HoodieAvroRecord payload = (HoodieAvroRecord) value;
+    try {
+      GenericRecord record = (GenericRecord) payload.getData()
+          .getInsertValue(this.writeSchema).get();
+      Object eventTimeVal = HoodieAvroUtils.getNestedFieldVal(
+          record, eventTimeField,
+          true,
+          false);
+      long eventTime = Objects.nonNull(eventTimeVal) ? Long.parseLong(eventTimeVal.toString()) : Long.MIN_VALUE;
+      this.currentTimeStamp =  Math.max(eventTime, currentTimeStamp);
+      return eventTime;
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

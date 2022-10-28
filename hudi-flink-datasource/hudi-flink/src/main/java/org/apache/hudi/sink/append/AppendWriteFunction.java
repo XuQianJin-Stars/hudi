@@ -60,6 +60,8 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
    */
   private final RowType rowType;
 
+  private  int eventTimeFieldIndex;
+
   /**
    * Constructs an AppendWriteFunction.
    *
@@ -68,6 +70,12 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
   public AppendWriteFunction(Configuration config, RowType rowType) {
     super(config);
     this.rowType = rowType;
+  }
+
+  @Override
+  public void open(Configuration parameters) throws Exception {
+    super.open(parameters);
+    this.eventTimeFieldIndex = this.writeSchema.getIndexNamed(this.eventTimeField);
   }
 
   @Override
@@ -83,6 +91,7 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
     if (this.writerHelper == null) {
       initWriterHelper();
     }
+    extractTimestamp(value, this.currentTimeStamp);
     this.writerHelper.write((RowData) value);
   }
 
@@ -133,6 +142,7 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
         .writeStatus(writeStatus)
         .lastBatch(true)
         .endInput(endInput)
+        .maxEventTime(this.currentTimeStamp)
         .build();
     this.eventGateway.sendEventToCoordinator(event);
     // nullify the write helper for next ckp
@@ -140,5 +150,13 @@ public class AppendWriteFunction<I> extends AbstractStreamWriteFunction<I> {
     this.writeStatuses.addAll(writeStatus);
     // blocks flushing until the coordinator starts a new instant
     this.confirming = true;
+  }
+
+  @Override
+  public long extractTimestamp(I value, long currentTimeStamp) {
+    Object eventTimeVal = ((RowData) value).getLong(eventTimeFieldIndex);
+    Long eventTime = Long.parseLong(eventTimeVal.toString());
+    this.currentTimeStamp = Math.max(eventTime, this.currentTimeStamp);
+    return eventTime;
   }
 }

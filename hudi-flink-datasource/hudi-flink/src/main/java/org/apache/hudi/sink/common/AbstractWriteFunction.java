@@ -18,6 +18,7 @@
 
 package org.apache.hudi.sink.common;
 
+import org.apache.avro.Schema;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
@@ -29,6 +30,12 @@ import org.apache.flink.streaming.api.operators.BoundedOneInput;
  * @param <I> the input type
  */
 public abstract class AbstractWriteFunction<I> extends ProcessFunction<I, Object> implements BoundedOneInput {
+
+  protected  Long currentTimeStamp;
+
+  protected String eventTimeField;
+
+  protected Schema writeSchema;
   /**
    * Sets up the event gateway.
    */
@@ -45,4 +52,6 @@ public abstract class AbstractWriteFunction<I> extends ProcessFunction<I, Object
    * @param event The event
    */
   public abstract void handleOperatorEvent(OperatorEvent event);
+
+  public abstract long extractTimestamp(I value, long currentTimeStamp);
 }
