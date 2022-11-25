@@ -52,6 +52,8 @@ public class HoodieCommitMetadata implements Serializable {
   protected Map<String, List<HoodieWriteStat>> partitionToWriteStats;
   protected Boolean compacted;
 
+  protected Boolean isNeedLock = true;
+
   protected Map<String, String> extraMetadata;
 
   protected WriteOperationType operationType = WriteOperationType.UNKNOWN;
@@ -104,6 +106,14 @@ public class HoodieCommitMetadata implements Serializable {
 
   public void setCompacted(Boolean compacted) {
     this.compacted = compacted;
+  }
+
+  public Boolean getNeedLock() {
+    return isNeedLock;
+  }
+
+  public void setNeedLock(Boolean needLock) {
+    isNeedLock = needLock;
   }
 
   public HashMap<String, String> getFileIdAndRelativePaths() {

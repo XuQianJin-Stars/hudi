@@ -268,9 +268,10 @@ public class HoodieFlinkWriteClient<T extends HoodieRecordPayload> extends
       initMetadataWriter();
     }
     try {
-      // guard the metadata writer with concurrent lock
-      this.txnManager.getLockManager().lock();
-
+      if (metadata.getNeedLock()) {
+        // guard the metadata writer with concurrent lock
+        this.txnManager.getLockManager().lock();
+      }
       // refresh the timeline
 
       // Note: the data meta client is not refreshed currently, some code path

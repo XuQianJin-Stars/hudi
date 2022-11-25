@@ -232,9 +232,10 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     this.txnManager.beginTransaction(Option.of(inflightInstant),
         lastCompletedTxnAndMetadata.isPresent() ? Option.of(lastCompletedTxnAndMetadata.get().getLeft()) : Option.empty());
     try {
+      // already within lock, and so no lock requried for commit.
+      metadata.setNeedLock(false);
       preCommit(inflightInstant, metadata);
       commit(table, commitActionType, instantTime, metadata, stats);
-      // already within lock, and so no lock requried for archival
       postCommit(table, metadata, instantTime, extraMetadata, false);
       LOG.info("Committed " + instantTime);
       releaseResources();
