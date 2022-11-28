@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.common.model.partial.update;
+package org.apache.hudi.common.model;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -81,7 +81,7 @@ public class MultiplePartialUpdateUnit {
 
     @Override
     public String toString() {
-      return String.format("%s%s:%s", this.orderingField, this.orderingValue, String.join(",", this.columnNames));
+      return String.format("%s=%s:%s", this.orderingField, this.orderingValue, String.join(",", this.columnNames));
     }
   }
 

@@ -38,6 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 public class TestPartialUpdateAvroPayload {
   private Schema schema;
 
+  protected String preCombineFields = "_ts1:name1,price1|_ts2:name2,price2";
+
   String jsonSchema = "{\n"
       + "  \"type\": \"record\",\n"
       + "  \"name\": \"partialRecord\", \"namespace\":\"org.apache.hudi\",\n"
@@ -83,7 +85,7 @@ public class TestPartialUpdateAvroPayload {
     record3.put("name1", "a1_1_1");
     record3.put("price1", 2.11);
     record3.put("_ts1", 1L);
-    record3.put("name2", null);
+    record3.put("name2", "a1_2");
     record3.put("price2", 2.12);
     record3.put("_ts2", 1L);
 
@@ -91,13 +93,13 @@ public class TestPartialUpdateAvroPayload {
     properties.put("schema", jsonSchema);
     // Keep record with largest ordering fiel
     PartialUpdateAvroPayload payload1 =
-        new PartialUpdateAvroPayload(record1, "_ts1=0:name1,price1;_ts2=0:name2,price2");
+        new PartialUpdateAvroPayload(record1, preCombineFields);
     PartialUpdateAvroPayload payload2 =
-        new PartialUpdateAvroPayload(record2, "_ts1=1:name1,price1;_ts2=1:name2,price2");
-    assertArrayEquals(new PartialUpdateAvroPayload(record3, 2).recordBytes,
-        payload1.preCombine(payload2, properties).recordBytes);
-    assertArrayEquals(new PartialUpdateAvroPayload(record3, 2).recordBytes,
-        payload2.preCombine(payload1, properties).recordBytes);
+        new PartialUpdateAvroPayload(record2, preCombineFields);
+    assertArrayEquals(new PartialUpdateAvroPayload(record3, preCombineFields).recordBytes,
+        payload1.preCombine(payload2, schema, properties).recordBytes);
+    assertArrayEquals(new PartialUpdateAvroPayload(record3, preCombineFields).recordBytes,
+        payload2.preCombine(payload1, schema, properties).recordBytes);
 
     assertEquals(record1, payload1.getInsertValue(schema).get());
     assertEquals(record2, payload2.getInsertValue(schema).get());
@@ -134,13 +136,13 @@ public class TestPartialUpdateAvroPayload {
     record4.put("_ts2", 5L);
 
     // Update subtable columns if ordering field is larger
-    payload1 = new PartialUpdateAvroPayload(record1, "_ts1=5:name1,price1;_ts2=4:name2,price2");
-    payload2 = new PartialUpdateAvroPayload(record2, "_ts1=4:name1,price1;_ts2=5:name2,price2");
+    payload1 = new PartialUpdateAvroPayload(record1, preCombineFields);
+    payload2 = new PartialUpdateAvroPayload(record2, preCombineFields);
 
-    PartialUpdateAvroPayload preCombineRes1 = payload1.preCombine(payload2,schema, properties);
-    PartialUpdateAvroPayload preCombineRes2 = payload2.preCombine(payload1,schema, properties);
+    PartialUpdateAvroPayload preCombineRes1 = payload1.preCombine(payload2, schema, properties);
+    PartialUpdateAvroPayload preCombineRes2 = payload2.preCombine(payload1, schema, properties);
 
-    String expOrderingVal = "_ts1=5:name1,price1;_ts2=5:name2,price2";
+    String expOrderingVal = preCombineFields;
     PartialUpdateAvroPayload expPrecombineRes =
         new PartialUpdateAvroPayload(record4, expOrderingVal);
 
@@ -183,18 +185,18 @@ public class TestPartialUpdateAvroPayload {
     record2.put("_hoodie_is_deleted", true);
 
     PartialUpdateAvroPayload payload1 =
-        new PartialUpdateAvroPayload(record1, "_ts1=1:name1,price1;_ts2=1:name2,price2");
+        new PartialUpdateAvroPayload(record1, preCombineFields);
     PartialUpdateAvroPayload payload2 =
-        new PartialUpdateAvroPayload(delRecord1, "_ts1=2:name1,price1;_ts2=2:name2,price2");
-
-    assertEquals(payload1.preCombine(payload2), payload2);
-    assertEquals(payload2.preCombine(payload1), payload2);
+        new PartialUpdateAvroPayload(delRecord1, preCombineFields);
+    // old value is delete just return incoming record
+    assertArrayEquals(payload1.preCombine(payload2, schema, new Properties()).recordBytes, payload1.recordBytes);
+    assertEquals(payload2.preCombine(payload1, schema, new Properties()).recordBytes.length, 0);
 
     assertEquals(record1, payload1.getInsertValue(schema).get());
     assertFalse(payload2.getInsertValue(schema).isPresent());
 
     Properties properties = new Properties();
-    properties.put(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY, "_ts1:name1,price1;_ts2:name2,price2");
+    properties.put(HoodiePayloadProps.PAYLOAD_ORDERING_FIELD_PROP_KEY, preCombineFields);
     assertFalse(payload1.combineAndGetUpdateValue(delRecord1, schema, properties).isPresent());
     assertFalse(payload2.combineAndGetUpdateValue(record1, schema, properties).isPresent());
   }
@@ -223,7 +225,7 @@ public class TestPartialUpdateAvroPayload {
 
     GenericRecord record3 = new GenericData.Record(schema);
     record3.put("id", "1");
-    record3.put("name1", null);
+    record3.put("name1", "a1_1");
     record3.put("price1", 1.11);
     record3.put("_ts1", 2L);
     record3.put("name2", null);
@@ -231,7 +233,7 @@ public class TestPartialUpdateAvroPayload {
     record3.put("_ts2", null);
 
     PartialUpdateAvroPayload payload2 =
-        new PartialUpdateAvroPayload(record2, "_ts1=1:name1,price1;_ts2=2:name2,price2");
+        new PartialUpdateAvroPayload(record2, preCombineFields);
     assertEquals(payload2.combineAndGetUpdateValue(record1, schema).get(), record3);
   }
 }

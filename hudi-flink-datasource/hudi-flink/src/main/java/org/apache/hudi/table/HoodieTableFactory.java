@@ -153,7 +153,7 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
       }
       if (preCombineField.equals(FlinkOptions.PRECOMBINE_FIELD.defaultValue())) {
         conf.setString(FlinkOptions.PRECOMBINE_FIELD, FlinkOptions.NO_PRE_COMBINE);
-      } else if (preCombineField.contains(";")) {
+      } else if (preCombineField.contains(":")) {
         // pre_combine key is in multi_ordering format (e.g. _ts1:name1,price1;_ts2:name2,price2)
         new MultiplePartialUpdateUnit(preCombineField)
             .getAllColumns().stream().filter(field -> !fields.contains(field))

@@ -490,10 +490,9 @@ public class ITTestDataStreamWrite extends TestLogger {
     options.put(FlinkOptions.INDEX_KEY_FIELD.key(), "uuid");
     options.put(FlinkOptions.HIVE_STYLE_PARTITIONING.key(), "false");
     options.put(FlinkOptions.PAYLOAD_CLASS_NAME.key(), PartialUpdateAvroPayload.class.getName());
-    options.put(FlinkOptions.PRECOMBINE_FIELD.key(), "_ts1:fa;_ts2:fb");
     options.put(FlinkOptions.PRE_COMBINE.key(), "true");
     options.put(FlinkOptions.TABLE_TYPE.key(), HoodieTableType.COPY_ON_WRITE.name());
-
+    options.put(FlinkOptions.PRECOMBINE_FIELD.key(), "_ts1:fa|_ts2:fb");
 
     //sink to hoodie table use low-level sink api.
     HoodiePipeline.Builder builder = HoodiePipeline.builder("test_sink")
@@ -582,7 +581,7 @@ public class ITTestDataStreamWrite extends TestLogger {
         + "    {\"name\": \"_ts2\", \"type\": [\"null\", \"long\"]}\n"
         + "  ]\n"
         + "}";
-    String preCombineFields = "_ts1:fa;_ts2:fb";
+    String preCombineFields = "_ts1:fa|_ts2:fb";
     List<HoodieAvroRecord> records = new ArrayList<>();
     Schema avroSchema = new Schema.Parser().parse(schema);
     for (int i = 1; i <= 1000; i++) {

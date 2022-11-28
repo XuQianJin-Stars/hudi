@@ -19,7 +19,6 @@
 package org.apache.hudi.common.model;
 
 import org.apache.hudi.avro.HoodieAvroUtils;
-import org.apache.hudi.common.model.partial.update.MultiplePartialUpdateHelper;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.StringUtils;
@@ -110,9 +109,8 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
       if (isMultipleOrderFields(this.orderingVal.toString())) {
         Option<IndexedRecord> incomingRecord = getInsertValue(schema);
         Option<IndexedRecord> mergedRecord = preCombineMultiplePartialUpdate(oldIndexedValue, incomingRecord, schema, this.orderingVal, properties);
-        if (mergedRecord.isPresent()) {
-          return new PartialUpdateAvroPayload(Option.of((GenericRecord) mergedRecord.get()));
-        }
+        GenericRecord  result = ((GenericRecord) mergedRecord.orElse(null));
+        return new PartialUpdateAvroPayload(result, this.orderingVal);
       }
       // pick the payload with greater ordering value as insert record
       final boolean shouldPickOldRecord = oldValue.orderingVal.compareTo(orderingVal) > 0;
