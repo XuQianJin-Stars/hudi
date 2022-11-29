@@ -30,6 +30,7 @@ import org.apache.hudi.client.utils.SparkInternalSchemaConverter
 import org.apache.hudi.common.config.{HoodieMetadataConfig, SerializableConfiguration}
 import org.apache.hudi.common.fs.FSUtils
 import org.apache.hudi.common.fs.FSUtils.getRelativePartitionPath
+import org.apache.hudi.common.model.partial.update.MultiplePartialUpdateUnit
 import org.apache.hudi.common.model.{FileSlice, HoodieFileFormat, HoodieRecord}
 import org.apache.hudi.common.table.timeline.{HoodieInstant, HoodieTimeline}
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView
@@ -58,6 +59,7 @@ import org.apache.spark.unsafe.types.UTF8String
 
 import java.net.URI
 import java.util.Locale
+import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -124,6 +126,18 @@ abstract class HoodieBaseRelation(val sqlContext: SQLContext,
       case Some(f) if !StringUtils.isNullOrEmpty(f) => Some(f)
       case _ => None
     }
+
+  protected def getPreCombineFields(preCombineFieldOpt: Option[String]) : Seq[String] = {
+    val preCombineField: Seq[String] = if (preCombineFieldOpt.isDefined && preCombineFieldOpt.get.contains(":")) {
+      val multiplePartialUpdateUnit: MultiplePartialUpdateUnit = new MultiplePartialUpdateUnit(preCombineFieldOpt.get)
+      val orderFields = JavaConverters.asScalaBufferConverter(multiplePartialUpdateUnit.getAllOrderingFields).asScala.toSeq
+      orderFields
+    } else {
+      preCombineFieldOpt.map(Seq(_)).getOrElse(Seq())
+    }
+    preCombineField
+  }
+
 
   protected lazy val specifiedQueryTimestamp: Option[String] =
     optParams.get(DataSourceReadOptions.TIME_TRAVEL_AS_OF_INSTANT.key)

@@ -165,7 +165,7 @@ public interface MultiplePartialUpdateHelper {
     return (deleteMarker instanceof Boolean && (boolean) deleteMarker);
   }
 
- default void setField(GenericRecord resultRecord, GenericRecord insertRecord, Schema.Field field) {
+  default void setField(GenericRecord resultRecord, GenericRecord insertRecord, Schema.Field field) {
     Object value = resultRecord.get(field.name());
     value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
     Object defaultValue = field.defaultVal();

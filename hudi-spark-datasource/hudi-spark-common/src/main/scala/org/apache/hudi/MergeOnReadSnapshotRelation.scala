@@ -68,7 +68,7 @@ class MergeOnReadSnapshotRelation(sqlContext: SQLContext,
    *       by the query), therefore saving on throughput
    */
   protected lazy val mandatoryFieldsForMerging: Seq[String] =
-    Seq(recordKeyField) ++ preCombineFieldOpt.map(Seq(_)).getOrElse(Seq())
+    Seq(recordKeyField) ++ getPreCombineFields(preCombineFieldOpt)
 
   override lazy val mandatoryFields: Seq[String] = mandatoryFieldsForMerging
 

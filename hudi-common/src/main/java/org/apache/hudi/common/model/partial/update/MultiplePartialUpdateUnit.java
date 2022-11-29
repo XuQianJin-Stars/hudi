@@ -48,6 +48,10 @@ public class MultiplePartialUpdateUnit {
     return allColumns;
   }
 
+  public List<String> getAllOrderingFields() {
+    return this.multiplePartialUpdateUnits.stream().map(PartialUpdateUnit::getOrderingField).collect(Collectors.toList());
+  }
+
   public List<PartialUpdateUnit> getMultiplePartialUpdateUnits() {
     return multiplePartialUpdateUnits;
   }
