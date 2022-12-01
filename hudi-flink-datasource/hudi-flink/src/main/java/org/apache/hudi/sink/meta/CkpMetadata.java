@@ -81,6 +81,11 @@ public class CkpMetadata implements Serializable {
     this.path = new Path(ckpMetaPath(basePath));
   }
 
+  private CkpMetadata(FileSystem fs, String basePath, String concurrencyJobName) {
+    this.fs = fs;
+    this.path = new Path(ckpMetaPath(basePath) + "/" + concurrencyJobName);
+  }
+
   public void close() {
     this.instantCache = null;
   }
@@ -202,6 +207,13 @@ public class CkpMetadata implements Serializable {
 
   public static CkpMetadata getInstance(FileSystem fs, String basePath) {
     return new CkpMetadata(fs, basePath);
+  }
+
+  public static CkpMetadata getInstance(FileSystem fs, String basePath, String concurrencyJobName) {
+    if (concurrencyJobName.isEmpty()) {
+      return new CkpMetadata(fs, basePath);
+    }
+    return new CkpMetadata(fs, basePath, concurrencyJobName);
   }
 
   protected static String ckpMetaPath(String basePath) {

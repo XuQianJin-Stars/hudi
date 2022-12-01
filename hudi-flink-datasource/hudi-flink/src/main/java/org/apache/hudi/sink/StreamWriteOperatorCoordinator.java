@@ -178,7 +178,7 @@ public class StreamWriteOperatorCoordinator
     this.gateways = new SubtaskGateway[this.parallelism];
     // init table, create if not exists.
     this.metaClient = initTableIfNotExists(this.conf);
-    this.ckpMetadata = initCkpMetadata(this.metaClient);
+    this.ckpMetadata = initCkpMetadata(this.metaClient, this.conf.getString(FlinkOptions.WRITE_LOG_SUFFIX));
     // the write client must create after the table creation
     this.writeClient = StreamerUtil.createWriteClient(conf);
     initMetadataTable(this.writeClient);
@@ -340,11 +340,12 @@ public class StreamWriteOperatorCoordinator
     writeClient.initMetadataTable();
   }
 
-  private static CkpMetadata initCkpMetadata(HoodieTableMetaClient metaClient) throws IOException {
-    CkpMetadata ckpMetadata = CkpMetadata.getInstance(metaClient.getFs(), metaClient.getBasePath());
+  private static CkpMetadata initCkpMetadata(HoodieTableMetaClient metaClient, String concurrencyJobName) throws IOException {
+    CkpMetadata ckpMetadata = CkpMetadata.getInstance(metaClient.getFs(), metaClient.getBasePath(), concurrencyJobName);
     ckpMetadata.bootstrap(metaClient);
     return ckpMetadata;
   }
+
 
   private void reset() {
     this.eventBuffer = new WriteMetadataEvent[this.parallelism];
