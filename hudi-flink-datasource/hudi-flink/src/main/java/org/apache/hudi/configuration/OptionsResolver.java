@@ -126,6 +126,10 @@ public class OptionsResolver {
     return conf.getString(FlinkOptions.INDEX_TYPE).equalsIgnoreCase(HoodieIndex.IndexType.BUCKET.name());
   }
 
+  public static boolean isNonIndexType(Configuration conf) {
+    return conf.getString(FlinkOptions.INDEX_TYPE).equals(HoodieIndex.IndexType.NON_INDEX.name());
+  }
+
   /**
    * Returns whether the source should emit changelog.
    *

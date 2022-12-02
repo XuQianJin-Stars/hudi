@@ -73,6 +73,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -322,6 +324,40 @@ public class TestData {
           TimestampData.fromEpochMillis(5), StringData.fromString("par1"))
   );
 
+  public static List<RowData> DATA_SET_INSERT_NOM_INDEX = Arrays.asList(
+      //partition1
+      insertRow(StringData.fromString("id1"), StringData.fromString("Danny"), 23,
+          TimestampData.fromEpochMillis(1), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+      insertRow(StringData.fromString("id2"), StringData.fromString("Stephen"), 33,
+          TimestampData.fromEpochMillis(2), StringData.fromString("par1")),
+
+      //partition2
+      insertRow(StringData.fromString("id3"), StringData.fromString("Julian"), 53,
+          TimestampData.fromEpochMillis(3), StringData.fromString("par2")),
+
+      //partition3
+      insertRow(StringData.fromString("id5"), StringData.fromString("Sophia"), 18,
+          TimestampData.fromEpochMillis(5), StringData.fromString("par3")),
+
+      //partition4
+      insertRow(StringData.fromString("id7"), StringData.fromString("Bob"), 44,
+          TimestampData.fromEpochMillis(7), StringData.fromString("par4"))
+  );
+
   public static List<RowData> DATA_SET_SINGLE_INSERT = Collections.singletonList(
       insertRow(StringData.fromString("id1"), StringData.fromString("Danny"), 23,
           TimestampData.fromEpochMillis(1), StringData.fromString("par1")));
@@ -555,6 +591,65 @@ public class TestData {
   public static void assertRowDataEquals(List<RowData> rows, List<RowData> expected) {
     String rowsString = rowDataToString(rows);
     assertThat(rowsString, is(rowDataToString(expected)));
+  }
+
+  /**
+   * Checks the source data are written as expected.
+   *
+   * <p>Note: Replace it with the Flink reader when it is supported.
+   *
+   * @param basePath The file base to check, should be a directory
+   * @param expected The expected results mapping, the key should be the partition path
+   */
+  public static void checkWrittenFullData(
+      File basePath,
+      Map<String, List<String>> expected) throws IOException {
+    checkWrittenFullDataFunction(basePath, expected, FILTER_OUT_VARIABLES_FUNCTION);
+  }
+
+
+  /**
+   * Checks the source data are written as expected.
+   *
+   * <p>Note: Replace it with the Flink reader when it is supported.
+   *
+   * @param basePath The file base to check, should be a directory
+   * @param expected The expected results mapping, the key should be the partition path
+   */
+  public static void checkWrittenFullDataFunction(
+      File basePath,
+      Map<String, List<String>> expected,
+      Function<GenericRecord, String> creator) throws IOException {
+
+    // 1. init flink table
+    HoodieTableMetaClient metaClient = HoodieTestUtils.init(basePath.getAbsolutePath());
+    HoodieWriteConfig config = HoodieWriteConfig.newBuilder().withPath(basePath.getAbsolutePath()).build();
+    HoodieFlinkTable table = HoodieFlinkTable.create(config, HoodieFlinkEngineContext.DEFAULT, metaClient);
+
+    // 2. check each partition data
+    expected.forEach((partition, partitionDataSet) -> {
+
+      List<String> readBuffer = new ArrayList<>();
+      table.getBaseFileOnlyView().getLatestBaseFiles(partition)
+          .forEach(baseFile -> {
+            String path = baseFile.getPath();
+            try {
+              ParquetReader<GenericRecord> reader = AvroParquetReader.<GenericRecord>builder(new Path(path)).build();
+              GenericRecord nextRecord = reader.read();
+              while (nextRecord != null) {
+                String value = creator.apply(nextRecord);
+                readBuffer.add(value);
+                nextRecord = reader.read();
+              }
+            } catch (IOException e) {
+              throw new RuntimeException(e);
+            }
+          });
+
+      assertTrue(partitionDataSet.size() == readBuffer.size() && partitionDataSet.containsAll(readBuffer));
+
+    });
+
   }
 
   /**
@@ -849,6 +944,9 @@ public class TestData {
         .withRecordMerger(HoodieRecordUtils.loadRecordMerger(HoodieAvroRecordMerger.class.getName()))
         .build();
   }
+
+  private static Function<GenericRecord, String> FILTER_OUT_VARIABLES_FUNCTION =
+      genericRecord -> filterOutVariables(genericRecord);
 
   /**
    * Filter out the variables like file name.

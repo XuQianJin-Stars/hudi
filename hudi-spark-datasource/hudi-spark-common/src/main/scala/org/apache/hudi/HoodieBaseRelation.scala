@@ -32,6 +32,7 @@ import org.apache.hudi.client.utils.SparkInternalSchemaConverter
 import org.apache.hudi.common.config.{ConfigProperty, HoodieMetadataConfig, SerializableConfiguration}
 import org.apache.hudi.common.fs.FSUtils
 import org.apache.hudi.common.fs.FSUtils.getRelativePartitionPath
+import org.apache.hudi.common.model.partial.update.MultiplePartialUpdateUnit
 import org.apache.hudi.common.model.{FileSlice, HoodieFileFormat, HoodieRecord}
 import org.apache.hudi.common.table.timeline.{HoodieInstant, HoodieTimeline}
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView
@@ -62,7 +63,7 @@ import org.apache.spark.sql.{HoodieCatalystExpressionUtils, Row, SQLContext, Spa
 import org.apache.spark.unsafe.types.UTF8String
 import java.net.URI
 import java.util.Locale
-
+import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -131,6 +132,18 @@ abstract class HoodieBaseRelation(val sqlContext: SQLContext,
       case Some(f) if !StringUtils.isNullOrEmpty(f) => Some(f)
       case _ => None
     }
+
+  protected def getPreCombineFields(preCombineFieldOpt: Option[String]) : Seq[String] = {
+    val preCombineField: Seq[String] = if (preCombineFieldOpt.isDefined && preCombineFieldOpt.get.contains(":")) {
+      val multiplePartialUpdateUnit: MultiplePartialUpdateUnit = new MultiplePartialUpdateUnit(preCombineFieldOpt.get)
+      val orderFields = JavaConverters.asScalaBufferConverter(multiplePartialUpdateUnit.getAllOrderingFields).asScala.toSeq
+      orderFields
+    } else {
+      preCombineFieldOpt.map(Seq(_)).getOrElse(Seq())
+    }
+    preCombineField
+  }
+
 
   protected lazy val specifiedQueryTimestamp: Option[String] =
     optParams.get(DataSourceReadOptions.TIME_TRAVEL_AS_OF_INSTANT.key)
@@ -327,7 +340,8 @@ abstract class HoodieBaseRelation(val sqlContext: SQLContext,
     //
     // (!!!) IT'S CRITICAL TO AVOID REORDERING OF THE REQUESTED COLUMNS AS THIS WILL BREAK THE UPSTREAM
     //       PROJECTION
-    val targetColumns: Array[String] = appendMandatoryColumns(requiredColumns)
+    val targetColumns: Array[String] =
+      appendMandatoryColumns(requiredColumns.filterNot(field => field.contains(";"))).filterNot(field => field.contains(";"))
     // NOTE: We explicitly fallback to default table's Avro schema to make sure we avoid unnecessary Catalyst > Avro
     //       schema conversion, which is lossy in nature (for ex, it doesn't preserve original Avro type-names) and
     //       could have an effect on subsequent de-/serializing records in some exotic scenarios (when Avro unions

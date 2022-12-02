@@ -34,6 +34,8 @@ import java.util.Objects;
  */
 public final class HoodieKey implements Serializable, KryoSerializable {
 
+  public static final String EMPTY_RECORD_KEY = "_hoodie_empty_record_key_";
+
   private String recordKey;
   private String partitionPath;
 

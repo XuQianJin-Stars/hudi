@@ -43,6 +43,7 @@ class ShowCommitFilesProcedure() extends BaseProcedure with ProcedureBuilder {
     StructField("action", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("partition_path", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("file_id", DataTypes.StringType, nullable = true, Metadata.empty),
+    StructField("path", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("previous_commit", DataTypes.StringType, nullable = true, Metadata.empty),
     StructField("total_records_updated", DataTypes.LongType, nullable = true, Metadata.empty),
     StructField("total_records_written", DataTypes.LongType, nullable = true, Metadata.empty),
@@ -81,7 +82,7 @@ class ShowCommitFilesProcedure() extends BaseProcedure with ProcedureBuilder {
       val path: String = entry.getKey
       val stats: List[HoodieWriteStat] = entry.getValue
       for (stat <- stats) {
-        rows.add(Row(action, path, stat.getFileId, stat.getPrevCommit, stat.getNumUpdateWrites,
+        rows.add(Row(action, path, stat.getFileId, stat.getPath, stat.getPrevCommit, stat.getNumUpdateWrites,
           stat.getNumWrites, stat.getTotalWriteBytes, stat.getTotalWriteErrors, stat.getFileSizeInBytes))
       }
     }

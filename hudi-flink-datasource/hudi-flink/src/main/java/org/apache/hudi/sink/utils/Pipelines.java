@@ -18,6 +18,19 @@
 
 package org.apache.hudi.sink.utils;
 
+import org.apache.flink.api.common.functions.Partitioner;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSink;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.operators.KeyedProcessOperator;
+import org.apache.flink.streaming.api.operators.ProcessOperator;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodeUtil;
+import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
+import org.apache.flink.table.types.logical.RowType;
 import org.apache.hudi.common.model.ClusteringOperation;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -44,6 +57,7 @@ import org.apache.hudi.sink.compact.CompactionCommitEvent;
 import org.apache.hudi.sink.compact.CompactionCommitSink;
 import org.apache.hudi.sink.compact.CompactionPlanEvent;
 import org.apache.hudi.sink.compact.CompactionPlanOperator;
+import org.apache.hudi.sink.nonindex.NonIndexStreamWriteOperator;
 import org.apache.hudi.sink.partitioner.BucketAssignFunction;
 import org.apache.hudi.sink.partitioner.BucketIndexPartitioner;
 import org.apache.hudi.sink.transform.RowDataToHoodieFunctions;
@@ -321,6 +335,12 @@ public class Pipelines {
       return dataStream.partitionCustom(partitioner, HoodieRecord::getKey)
           .transform(opName("bucket_write", conf), TypeInformation.of(Object.class), operatorFactory)
           .uid(opUID("bucket_write", conf))
+          .setParallelism(conf.getInteger(FlinkOptions.WRITE_TASKS));
+    } else if (OptionsResolver.isNonIndexType(conf)) {
+      WriteOperatorFactory<HoodieRecord> operatorFactory = NonIndexStreamWriteOperator.getFactory(conf);
+      return dataStream.transform("non_index_write",
+              TypeInformation.of(Object.class), operatorFactory)
+          .uid("uid_non_index_write" + conf.getString(FlinkOptions.TABLE_NAME))
           .setParallelism(conf.getInteger(FlinkOptions.WRITE_TASKS));
     } else {
       WriteOperatorFactory<HoodieRecord> operatorFactory = StreamWriteOperator.getFactory(conf);

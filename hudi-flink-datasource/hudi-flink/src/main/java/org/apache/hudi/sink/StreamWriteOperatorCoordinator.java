@@ -68,6 +68,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 
+import static org.apache.hudi.common.model.WriteConcurrencyMode.SINGLE_WRITER;
 import static org.apache.hudi.util.StreamerUtil.initTableIfNotExists;
 
 /**
@@ -180,7 +181,7 @@ public class StreamWriteOperatorCoordinator
     this.gateways = new SubtaskGateway[this.parallelism];
     // init table, create if not exists.
     this.metaClient = initTableIfNotExists(this.conf);
-    this.ckpMetadata = initCkpMetadata(this.metaClient);
+    this.ckpMetadata = initCkpMetadata(this.metaClient, this.conf.getString(FlinkOptions.WRITE_LOG_SUFFIX));
     // the write client must create after the table creation
     this.writeClient = FlinkWriteClients.createWriteClient(conf);
     initMetadataTable(this.writeClient);
@@ -342,11 +343,12 @@ public class StreamWriteOperatorCoordinator
     writeClient.initMetadataTable();
   }
 
-  private static CkpMetadata initCkpMetadata(HoodieTableMetaClient metaClient) throws IOException {
-    CkpMetadata ckpMetadata = CkpMetadata.getInstance(metaClient.getFs(), metaClient.getBasePath());
+  private static CkpMetadata initCkpMetadata(HoodieTableMetaClient metaClient, String concurrencyJobName) throws IOException {
+    CkpMetadata ckpMetadata = CkpMetadata.getInstance(metaClient.getFs(), metaClient.getBasePath(), concurrencyJobName);
     ckpMetadata.bootstrap();
     return ckpMetadata;
   }
+
 
   private void reset() {
     this.eventBuffer = new WriteMetadataEvent[this.parallelism];
@@ -440,10 +442,11 @@ public class StreamWriteOperatorCoordinator
     // the write task does not block after checkpointing(and before it receives a checkpoint success event),
     // if it checkpoints succeed then flushes the data buffer again before this coordinator receives a checkpoint
     // success event, the data buffer would flush with an older instant time.
-    ValidationUtils.checkState(
-        HoodieTimeline.compareTimestamps(this.instant, HoodieTimeline.GREATER_THAN_OR_EQUALS, event.getInstantTime()),
-        String.format("Receive an unexpected event for instant %s from task %d",
-            event.getInstantTime(), event.getTaskID()));
+    if (HoodieTimeline.compareTimestamps(this.instant, HoodieTimeline.GREATER_THAN_OR_EQUALS, event.getInstantTime())
+        && this.writeClient.getConfig().getWriteConcurrencyMode() == SINGLE_WRITER) {
+      ValidationUtils.checkState(true, String.format("Receive an unexpected event for instant %s from task %d",
+          event.getInstantTime(), event.getTaskID()));
+    }
 
     addEventToBuffer(event);
   }
@@ -506,7 +509,9 @@ public class StreamWriteOperatorCoordinator
       sendCommitAckEvents(checkpointId);
       return false;
     }
+    long start = System.currentTimeMillis();
     doCommit(instant, writeResults);
+    LOG.info("DoCommit Use time {} ms", System.currentTimeMillis() - start);
     return true;
   }
 
@@ -563,6 +568,11 @@ public class StreamWriteOperatorCoordinator
   @VisibleForTesting
   public String getInstant() {
     return instant;
+  }
+
+  @VisibleForTesting
+  public HoodieFlinkWriteClient getWriteClient() {
+    return writeClient;
   }
 
   @VisibleForTesting

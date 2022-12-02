@@ -79,8 +79,8 @@ public class FSUtils {
   private static final Logger LOG = LogManager.getLogger(FSUtils.class);
   // Log files are of this pattern - .b5068208-e1a4-11e6-bf01-fe55135034f3_20170101134598.log.1_1-0-1
   // Archive log files are of this pattern - .commits_.archive.1_1-0-1
-  public static final Pattern LOG_FILE_PATTERN =
-      Pattern.compile("\\.(.+)_(.*)\\.(.+)\\.(\\d+)(_((\\d+)-(\\d+)-(\\d+))(.cdc)?)?");
+  private static final Pattern LOG_FILE_PATTERN =
+      Pattern.compile("\\.(.*)_(.*)\\.(.*)\\.([0-9]*)(_(([0-9]*)-([0-9]*)-([0-9]*)))?(_(([a-zA-z0-9_])*))?");
   private static final int MAX_ATTEMPTS_RECOVER_LEASE = 10;
   private static final long MIN_CLEAN_TO_KEEP = 10;
   private static final long MIN_ROLLBACK_TO_KEEP = 10;
@@ -461,11 +461,25 @@ public class FSUtils {
     return Integer.parseInt(matcher.group(4));
   }
 
+  public static String getSuffixExtensionFromLog(Path logPath) {
+    Matcher matcher = LOG_FILE_PATTERN.matcher(logPath.getName());
+    if (!matcher.find()) {
+      throw new InvalidHoodiePathException(logPath, "LogFile");
+    }
+    return matcher.group(11);
+  }
+
   public static String makeLogFileName(String fileId, String logFileExtension, String baseCommitTime, int version,
       String writeToken) {
+    return makeLogFileName(fileId, logFileExtension, baseCommitTime, version, writeToken, "");
+  }
+
+  public static String makeLogFileName(String fileId, String logFileExtension, String baseCommitTime, int version,
+      String writeToken, String logSuffix) {
+    String hoodieLogSuffix = (logSuffix == null || logSuffix.isEmpty()) ? "" : "_" + logSuffix;
     String suffix = (writeToken == null)
-        ? String.format("%s_%s%s.%d", fileId, baseCommitTime, logFileExtension, version)
-        : String.format("%s_%s%s.%d_%s", fileId, baseCommitTime, logFileExtension, version, writeToken);
+        ? String.format("%s_%s%s.%d%s", fileId, baseCommitTime, logFileExtension, version, hoodieLogSuffix)
+        : String.format("%s_%s%s.%d_%s%s", fileId, baseCommitTime, logFileExtension, version, writeToken, hoodieLogSuffix);
     return HoodieLogFile.LOG_FILE_PREFIX + suffix;
   }
 

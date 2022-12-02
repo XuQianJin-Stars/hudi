@@ -23,7 +23,10 @@ import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.keygen.KeyGenUtils;
 
+import org.apache.hudi.common.util.hash.HashID;
+
 import java.io.Serializable;
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -38,7 +41,7 @@ public class BucketIdentifier implements Serializable {
   }
 
   public static int getBucketId(HoodieKey hoodieKey, String indexKeyFields, int numBuckets) {
-    return (getHashKeys(hoodieKey, indexKeyFields).hashCode() & Integer.MAX_VALUE) % numBuckets;
+    return (getHashKeys(hoodieKey.getRecordKey(), indexKeyFields).hashCode() & Integer.MAX_VALUE) % numBuckets;
   }
 
   public static int getBucketId(HoodieKey hoodieKey, List<String> indexKeyFields, int numBuckets) {
@@ -53,10 +56,6 @@ public class BucketIdentifier implements Serializable {
     return (hashKeyFields.hashCode() & Integer.MAX_VALUE) % numBuckets;
   }
 
-  public static List<String> getHashKeys(HoodieKey hoodieKey, String indexKeyFields) {
-    return getHashKeys(hoodieKey.getRecordKey(), indexKeyFields);
-  }
-
   protected static List<String> getHashKeys(String recordKey, String indexKeyFields) {
     return !recordKey.contains(":") ? Collections.singletonList(recordKey) :
         getHashKeysUsingIndexFields(recordKey, Arrays.asList(indexKeyFields.split(",")));
@@ -64,15 +63,11 @@ public class BucketIdentifier implements Serializable {
 
   protected static List<String> getHashKeys(String recordKey, List<String> indexKeyFields) {
     return !recordKey.contains(":") ? Collections.singletonList(recordKey) :
-        getHashKeysUsingIndexFields(recordKey, indexKeyFields);
+            getHashKeysUsingIndexFields(recordKey, indexKeyFields);
   }
 
   private static List<String> getHashKeysUsingIndexFields(String recordKey, List<String> indexKeyFields) {
     return Arrays.asList(KeyGenUtils.extractRecordKeysByFields(recordKey, indexKeyFields));
-  }
-
-  public static String partitionBucketIdStr(String partition, int bucketId) {
-    return String.format("%s_%s", partition, bucketIdStr(bucketId));
   }
 
   public static int bucketIdFromFileId(String fileId) {
@@ -83,12 +78,25 @@ public class BucketIdentifier implements Serializable {
     return String.format("%08d", n);
   }
 
+  public static String newBucketFileIdPrefix(int bucketId, String partitionPath) {
+    return newBucketFileIdPrefix(bucketIdStr(bucketId), partitionPath);
+  }
+
   public static String newBucketFileIdPrefix(int bucketId) {
     return newBucketFileIdPrefix(bucketIdStr(bucketId));
   }
 
   public static String newBucketFileIdPrefix(String bucketId) {
     return FSUtils.createNewFileIdPfx().replaceFirst(".{8}", bucketId);
+  }
+
+  public static String newBucketFileIdPrefix(String bucketId, String partitionPath) {
+    return createNewFileIdPfx(partitionPath).replaceFirst(".{9}", bucketId + "-");
+  }
+
+  private static String createNewFileIdPfx(String partitionPath) {
+    byte[] hash = HashID.hash(partitionPath, HashID.Size.BITS_128);
+    return new BigInteger(1, hash).toString(16);
   }
 
   public static boolean isBucketFileName(String name) {

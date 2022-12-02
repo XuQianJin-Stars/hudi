@@ -19,12 +19,16 @@
 package org.apache.hudi.table;
 
 import org.apache.hudi.common.model.DefaultHoodieRecordPayload;
+import org.apache.hudi.common.model.EventTimeAvroPayload;
+import org.apache.hudi.common.model.WriteOperationType;
+import org.apache.hudi.common.model.partial.update.MultiplePartialUpdateUnit;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.OptionsResolver;
 import org.apache.hudi.exception.HoodieValidationException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.keygen.ComplexAvroKeyGenerator;
+import org.apache.hudi.keygen.EmptyAvroKeyGenerator;
 import org.apache.hudi.keygen.NonpartitionedAvroKeyGenerator;
 import org.apache.hudi.keygen.TimestampBasedAvroKeyGenerator;
 import org.apache.hudi.keygen.constant.KeyGeneratorOptions;
@@ -56,6 +60,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.apache.hudi.common.util.ValidationUtils.checkArgument;
+import static org.apache.hudi.configuration.FlinkOptions.REALTIME_SKIP_MERGE;
 
 /**
  * Hoodie data source/sink factory.
@@ -149,6 +154,15 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
       }
       if (preCombineField.equals(FlinkOptions.PRECOMBINE_FIELD.defaultValue())) {
         conf.setString(FlinkOptions.PRECOMBINE_FIELD, FlinkOptions.NO_PRE_COMBINE);
+      } else if (preCombineField.contains(":")) {
+        // pre_combine key is in multi_ordering format (e.g. _ts1:name1,price1;_ts2:name2,price2)
+        new MultiplePartialUpdateUnit(preCombineField)
+            .getAllColumns().stream().filter(field -> !fields.contains(field))
+            .findAny()
+            .ifPresent(f -> {
+              throw new HoodieValidationException("Field " + preCombineField + " does not exist in the table schema."
+                  + "Please check '" + FlinkOptions.PRECOMBINE_FIELD.key() + "' option.");
+            });
       } else if (!preCombineField.equals(FlinkOptions.NO_PRE_COMBINE)) {
         throw new HoodieValidationException("Field " + preCombineField + " does not exist in the table schema."
             + "Please check '" + FlinkOptions.PRECOMBINE_FIELD.key() + "' option.");
@@ -183,6 +197,15 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
     setupWriteOptions(conf);
     // infer avro schema from physical DDL schema
     inferAvroSchema(conf, schema.toPhysicalRowDataType().notNull().getLogicalType());
+    setupDefaultOptionsForNonIndex(conf);
+  }
+
+  private static void setupDefaultOptionsForNonIndex(Configuration conf) {
+    if (OptionsResolver.isNonIndexType(conf)) {
+      conf.setString(FlinkOptions.KEYGEN_CLASS_NAME, EmptyAvroKeyGenerator.class.getName());
+      conf.setString(FlinkOptions.OPERATION, WriteOperationType.INSERT.value());
+      conf.setString(FlinkOptions.MERGE_TYPE, REALTIME_SKIP_MERGE);
+    }
   }
 
   /**
@@ -230,7 +253,8 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
       }
       DataType partitionFieldType = table.getSchema().getFieldDataType(partitionField)
           .orElseThrow(() -> new HoodieValidationException("Field " + partitionField + " does not exist"));
-      if (pks.length <= 1 && DataTypeUtils.isDatetimeType(partitionFieldType)) {
+      if (pks.length <= 1 && (DataTypeUtils.isDatetimeType(partitionFieldType)
+          || conf.getOptional(FlinkOptions.PARTITION_TIMESTAMP_TYPE).isPresent())) {
         // timestamp based key gen only supports simple primary key
         setupTimestampKeygenOptions(conf, partitionFieldType);
         return;
@@ -269,6 +293,14 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
         conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_TYPE_FIELD_PROP,
             TimestampBasedAvroKeyGenerator.TimestampType.EPOCHMILLISECONDS.name());
       }
+      String outputPartitionFormat = conf.getOptional(FlinkOptions.PARTITION_FORMAT).orElse(FlinkOptions.PARTITION_FORMAT_HOUR);
+      conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_OUTPUT_DATE_FORMAT_PROP, outputPartitionFormat);
+    } else if (conf.getOptional(FlinkOptions.PARTITION_TIMESTAMP_TYPE).isPresent()
+            && conf.getOptional(FlinkOptions.PARTITION_TIMESTAMP_TYPE).get().equalsIgnoreCase(
+            TimestampBasedAvroKeyGenerator.TimestampType.EPOCHMILLISECONDS.name())) {
+      // milliseconds
+      conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_TYPE_FIELD_PROP,
+              TimestampBasedAvroKeyGenerator.TimestampType.EPOCHMILLISECONDS.name());
       String outputPartitionFormat = conf.getOptional(FlinkOptions.PARTITION_FORMAT).orElse(FlinkOptions.PARTITION_FORMAT_HOUR);
       conf.setString(KeyGeneratorOptions.Config.TIMESTAMP_OUTPUT_DATE_FORMAT_PROP, outputPartitionFormat);
     } else {

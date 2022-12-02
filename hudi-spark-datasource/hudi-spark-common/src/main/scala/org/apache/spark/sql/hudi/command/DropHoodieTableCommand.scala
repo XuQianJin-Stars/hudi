@@ -77,7 +77,7 @@ case class DropHoodieTableCommand(
       val (rtTableOpt, roTableOpt) = getTableRTAndRO(catalog, hoodieCatalogTable)
       rtTableOpt.foreach(table => catalog.dropTable(table.identifier, true, false))
       roTableOpt.foreach(table => catalog.dropTable(table.identifier, true, false))
-      catalog.dropTable(table.identifier.copy(table = hoodieCatalogTable.tableName), ifExists, purge)
+      catalog.dropTable(table.identifier.copy(table = hoodieCatalogTable.tableName), true, purge)
     } else {
       catalog.dropTable(table.identifier, ifExists, purge)
     }

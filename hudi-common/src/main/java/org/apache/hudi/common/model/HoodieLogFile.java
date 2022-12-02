@@ -99,6 +99,10 @@ public class HoodieLogFile implements Serializable {
     return FSUtils.getFileExtensionFromLog(getPath());
   }
 
+  public String getLogSuffix() {
+    return FSUtils.getSuffixExtensionFromLog(getPath());
+  }
+
   public Path getPath() {
     return new Path(pathStr);
   }
@@ -123,14 +127,14 @@ public class HoodieLogFile implements Serializable {
     this.fileStatus = fileStatus;
   }
 
-  public HoodieLogFile rollOver(FileSystem fs, String logWriteToken) throws IOException {
+  public HoodieLogFile rollOver(FileSystem fs, String logWriteToken, String logSuffix) throws IOException {
     String fileId = getFileId();
     String baseCommitTime = getBaseCommitTime();
     Path path = getPath();
     String extension = "." + FSUtils.getFileExtensionFromLog(path);
     int newVersion = FSUtils.computeNextLogVersion(fs, path.getParent(), fileId, extension, baseCommitTime);
     return new HoodieLogFile(new Path(path.getParent(),
-        FSUtils.makeLogFileName(fileId, extension, baseCommitTime, newVersion, logWriteToken)));
+        FSUtils.makeLogFileName(fileId, extension, baseCommitTime, newVersion, logWriteToken, logSuffix)));
   }
 
   public static Comparator<HoodieLogFile> getLogFileComparator() {
@@ -148,6 +152,7 @@ public class HoodieLogFile implements Serializable {
 
     private static final long serialVersionUID = 1L;
     private transient Comparator<String> writeTokenComparator;
+    private transient Comparator<String> writeLogSuffixComparator;
 
     private Comparator<String> getWriteTokenComparator() {
       if (null == writeTokenComparator) {
@@ -155,6 +160,14 @@ public class HoodieLogFile implements Serializable {
         writeTokenComparator = Comparator.nullsFirst(Comparator.naturalOrder());
       }
       return writeTokenComparator;
+    }
+
+    private Comparator<String> getWriteLogSuffixComparator() {
+      if (null == writeLogSuffixComparator) {
+        // writeTokenComparator is not serializable. Hence, lazy loading
+        writeLogSuffixComparator = Comparator.nullsFirst(Comparator.naturalOrder());
+      }
+      return writeLogSuffixComparator;
     }
 
     @Override
@@ -165,8 +178,14 @@ public class HoodieLogFile implements Serializable {
       if (baseInstantTime1.equals(baseInstantTime2)) {
 
         if (o1.getLogVersion() == o2.getLogVersion()) {
-          // Compare by write token when base-commit and log-version is same
-          return getWriteTokenComparator().compare(o1.getLogWriteToken(), o2.getLogWriteToken());
+
+          if (Objects.equals(o1.getLogWriteToken(), o2.getLogWriteToken())) {
+            // Compare by write log suffix when token is same
+            return getWriteLogSuffixComparator().compare(o1.getLogSuffix(), o2.getLogSuffix());
+          } else {
+            // Compare by write token when base-commit and log-version is same
+            return getWriteTokenComparator().compare(o1.getLogWriteToken(), o2.getLogWriteToken());
+          }
         }
 
         // compare by log-version when base-commit is same

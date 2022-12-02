@@ -445,6 +445,13 @@ public class FlinkOptions extends HoodieConfig {
           + "1) 'yyyyMMddHH' for timestamp(3) WITHOUT TIME ZONE, LONG, FLOAT, DOUBLE, DECIMAL;\n"
           + "2) 'yyyyMMdd' for DATE and INT.");
 
+
+  public static final ConfigOption<String> PARTITION_TIMESTAMP_TYPE = ConfigOptions
+      .key("write.partition.timestamp.type")
+      .stringType()
+      .noDefaultValue()
+      .withDescription("Partition timestamp type.");
+
   public static final ConfigOption<Integer> INDEX_BOOTSTRAP_TASKS = ConfigOptions
       .key("write.index_bootstrap.tasks")
       .intType()
@@ -493,6 +500,12 @@ public class FlinkOptions extends HoodieConfig {
       .longType()
       .defaultValue(1024L)
       .withDescription("Maximum size allowed in MB for a log file before it is rolled over to the next version, default 1GB");
+
+  public static final ConfigOption<String> WRITE_LOG_SUFFIX = ConfigOptions
+      .key(HoodieWriteConfig.WRITE_LOG_SUFFIX_VALUE.key())
+      .stringType()
+      .defaultValue("")
+      .withDescription("Distinguish the log files written by different jobs by suffixes");
 
   public static final ConfigOption<Integer> WRITE_PARQUET_BLOCK_SIZE = ConfigOptions
       .key("write.parquet.block.size")
@@ -634,12 +647,12 @@ public class FlinkOptions extends HoodieConfig {
           + "This also directly translates into how much you can incrementally pull on this table, default 30");
 
   public static final ConfigOption<Integer> CLEAN_RETAIN_HOURS = ConfigOptions
-      .key("clean.retain_hours")
-      .intType()
-      .defaultValue(24)// default 24 hours
-      .withDescription("Number of hours for which commits need to be retained. This config provides a more flexible option as"
-          + "compared to number of commits retained for cleaning service. Setting this property ensures all the files, but the latest in a file group,"
-          + " corresponding to commits with commit times older than the configured number of hours to be retained are cleaned.");
+          .key("clean.retain_hours")
+          .intType()
+          .defaultValue(24)// default 24 hours
+          .withDescription("Number of hours for which commits need to be retained. This config provides a more flexible option as"
+                  + "compared to number of commits retained for cleaning service. Setting this property ensures all the files, but the latest in a file group,"
+                  + " corresponding to commits with commit times older than the configured number of hours to be retained are cleaned.");
 
   public static final ConfigOption<Integer> CLEAN_RETAIN_FILE_VERSIONS = ConfigOptions
       .key("clean.retain_file_versions")

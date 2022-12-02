@@ -87,7 +87,7 @@ import java.util.Properties;
  *      1       2       name_1  price_1
  *</pre>
  */
-public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
+public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvroPayload implements MultiplePartialUpdateHelper {
 
   public PartialUpdateAvroPayload(GenericRecord record, Comparable orderingVal) {
     super(record, orderingVal);
@@ -103,11 +103,18 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
       // use natural order for delete record
       return this;
     }
-    // pick the payload with greater ordering value as insert record
-    final boolean shouldPickOldRecord = oldValue.orderingVal.compareTo(orderingVal) > 0 ? true : false;
+
     try {
-      GenericRecord oldRecord = HoodieAvroUtils.bytesToAvro(oldValue.recordBytes, schema);
-      Option<IndexedRecord> mergedRecord = mergeOldRecord(oldRecord, schema, shouldPickOldRecord);
+      Option<IndexedRecord> oldIndexedValue = oldValue.getInsertValue(schema);
+      if (isMultipleOrderFields(this.orderingVal.toString())) {
+        Option<IndexedRecord> incomingRecord = getInsertValue(schema);
+        Option<IndexedRecord> mergedRecord = preCombineMultiplePartialUpdate(oldIndexedValue, incomingRecord, schema, this.orderingVal, properties);
+        GenericRecord  result = ((GenericRecord) mergedRecord.orElse(null));
+        return new PartialUpdateAvroPayload(result, this.orderingVal);
+      }
+      // pick the payload with greater ordering value as insert record
+      final boolean shouldPickOldRecord = oldValue.orderingVal.compareTo(orderingVal) > 0;
+      Option<IndexedRecord> mergedRecord = mergeOldRecord(oldIndexedValue.get(), schema, shouldPickOldRecord);
       if (mergedRecord.isPresent()) {
         return new PartialUpdateAvroPayload((GenericRecord) mergedRecord.get(),
             shouldPickOldRecord ? oldValue.orderingVal : this.orderingVal);
@@ -120,12 +127,16 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
 
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
-    return this.mergeOldRecord(currentValue, schema, false);
+    return isMultipleOrderFields(this.orderingVal.toString())
+      ? combineAndGetUpdateValue(currentValue, getInsertValue(schema), schema, this.orderingVal)
+      : this.mergeOldRecord(currentValue, schema, false);
   }
 
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties prop) throws IOException {
-    return mergeOldRecord(currentValue, schema, isRecordNewer(orderingVal, currentValue, prop));
+    return isMultipleOrderFields(this.orderingVal.toString())
+      ? combineAndGetUpdateValue(currentValue, getInsertValue(schema), schema, this.orderingVal, prop)
+      : mergeOldRecord(currentValue, schema, isRecordNewer(orderingVal, currentValue, prop));
   }
 
   /**
@@ -158,7 +169,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     }
   }
 
-  /**
+  /**StreamWriteFunction
    * Merges the given disorder records with metadata.
    *
    * @param schema         The record schema

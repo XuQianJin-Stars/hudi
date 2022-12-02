@@ -35,7 +35,7 @@ public abstract class BaseActionExecutor<T, I, K, O, R> implements Serializable 
   protected final transient HoodieEngineContext context;
   protected final transient Configuration hadoopConf;
 
-  protected final HoodieWriteConfig config;
+  public final HoodieWriteConfig config;
 
   protected final HoodieTable<T, I, K, O> table;
 

@@ -31,6 +31,7 @@ import org.apache.hudi.common.config.HoodieMetadataConfig;
 import org.apache.hudi.common.config.HoodieMetastoreConfig;
 import org.apache.hudi.common.config.HoodieStorageConfig;
 import org.apache.hudi.common.config.TypedProperties;
+import org.apache.hudi.common.conflict.detection.HoodieEarlyConflictDetectionStrategy;
 import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.fs.ConsistencyGuardConfig;
 import org.apache.hudi.common.fs.FileSystemRetryConfig;
@@ -263,6 +264,11 @@ public class HoodieWriteConfig extends HoodieConfig {
       .key("hoodie.write.buffer.limit.bytes")
       .defaultValue(String.valueOf(4 * 1024 * 1024))
       .withDocumentation("Size of in-memory buffer used for parallelizing network reads and lake storage writes.");
+
+  public static final ConfigProperty<String> WRITE_LOG_SUFFIX_VALUE = ConfigProperty
+      .key("hoodie.write.log.suffix")
+      .defaultValue("")
+      .withDocumentation("Distinguish the log files written by different jobs by suffixes.");
 
   public static final ConfigProperty<String> WRITE_DISRUPTOR_BUFFER_SIZE = ConfigProperty
       .key("hoodie.write.executor.disruptor.buffer.size")
@@ -1119,6 +1125,10 @@ public class HoodieWriteConfig extends HoodieConfig {
     return Integer.parseInt(getStringOrDefault(WRITE_BUFFER_LIMIT_BYTES_VALUE));
   }
 
+  public String getWriteLogSuffix() {
+    return getString(WRITE_LOG_SUFFIX_VALUE);
+  }
+
   public Option<String> getWriteExecutorWaitStrategy() {
     return Option.of(getString(WRITE_WAIT_STRATEGY));
   }
@@ -1778,6 +1788,18 @@ public class HoodieWriteConfig extends HoodieConfig {
     return getString(HoodieIndexConfig.BUCKET_INDEX_HASH_FIELD);
   }
 
+  public int getNonIndexPartitionFileGroupCacheIntervalMinute() {
+    return getIntOrDefault(HoodieIndexConfig.NON_INDEX_PARTITION_FILE_GROUP_CACHE_INTERVAL_MINUTE);
+  }
+
+  public String getNonIndexPartitionFileGroupStorageType() {
+    return getString(HoodieIndexConfig.NON_INDEX_PARTITION_FILE_GROUP_STORAGE_TYPE);
+  }
+
+  public long getNonIndexPartitionFileGroupCacheSize() {
+    return getLong(HoodieIndexConfig.NON_INDEX_PARTITION_FILE_GROUP_CACHE_SIZE);
+  }
+
   /**
    * storage properties.
    */
@@ -2188,12 +2210,32 @@ public class HoodieWriteConfig extends HoodieConfig {
     return ReflectionUtils.loadClass(getString(HoodieLockConfig.WRITE_CONFLICT_RESOLUTION_STRATEGY_CLASS_NAME));
   }
 
+  public String getMarkerConflictCheckerBatchInterval() {
+    return String.valueOf(getLong(HoodieLockConfig.MARKER_CONFLICT_CHECKER_BATCH_INTERVAL));
+  }
+
+  public String getMarkerConflictCheckerPeriod() {
+    return String.valueOf(getLong(HoodieLockConfig.MARKER_CONFLICT_CHECKER_PERIOD));
+  }
+
   public Long getLockAcquireWaitTimeoutInMs() {
     return getLong(HoodieLockConfig.LOCK_ACQUIRE_WAIT_TIMEOUT_MS);
   }
 
   public WriteConcurrencyMode getWriteConcurrencyMode() {
     return WriteConcurrencyMode.fromValue(getString(WRITE_CONCURRENCY_MODE));
+  }
+
+  public boolean isEarlyConflictDetectionEnable() {
+    return getBoolean(HoodieLockConfig.EARLY_CONFLICT_DETECTION_ENABLE);
+  }
+
+  public String getEarlyConflictDetectionStrategyClassName() {
+    return getString(HoodieLockConfig.EARLY_CONFLICT_DETECTION_STRATEGY_CLASS_NAME);
+  }
+
+  public HoodieEarlyConflictDetectionStrategy getEarlyConflictDetectionStrategy() {
+    return ReflectionUtils.loadClass(getString(HoodieLockConfig.EARLY_CONFLICT_DETECTION_STRATEGY_CLASS_NAME));
   }
 
   // misc configs
@@ -2318,14 +2360,14 @@ public class HoodieWriteConfig extends HoodieConfig {
 
     public Builder fromFile(File propertiesFile) throws IOException {
       try (FileReader reader = new FileReader(propertiesFile)) {
-        this.writeConfig.getProps().load(reader);
+        writeConfig.getProps().load(reader);
         return this;
       }
     }
 
     public Builder fromInputStream(InputStream inputStream) throws IOException {
       try {
-        this.writeConfig.getProps().load(inputStream);
+        writeConfig.getProps().load(inputStream);
         return this;
       } finally {
         inputStream.close();
@@ -2445,6 +2487,11 @@ public class HoodieWriteConfig extends HoodieConfig {
 
     public Builder withWriteBufferLimitBytes(int writeBufferLimit) {
       writeConfig.setValue(WRITE_BUFFER_LIMIT_BYTES_VALUE, String.valueOf(writeBufferLimit));
+      return this;
+    }
+
+    public Builder withWriteLogSuffix(String writeLogSuffix) {
+      writeConfig.setValue(WRITE_LOG_SUFFIX_VALUE, writeLogSuffix);
       return this;
     }
 
@@ -2709,7 +2756,7 @@ public class HoodieWriteConfig extends HoodieConfig {
     }
 
     public Builder withProperties(Properties properties) {
-      this.writeConfig.getProps().putAll(properties);
+      writeConfig.getProps().putAll(properties);
       return this;
     }
 

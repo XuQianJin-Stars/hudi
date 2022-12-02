@@ -72,7 +72,7 @@ public abstract class BaseWriteHelper<T, I, K, O, R> {
       I dedupedRecords, HoodieEngineContext context, HoodieTable<T, I, K, O> table);
 
   public I combineOnCondition(
-      boolean condition, I records, int parallelism, HoodieTable<T, I, K, O> table) {
+          boolean condition, I records, int parallelism, HoodieTable<T, I, K, O> table) {
     return condition ? deduplicateRecords(records, table, parallelism) : records;
   }
 

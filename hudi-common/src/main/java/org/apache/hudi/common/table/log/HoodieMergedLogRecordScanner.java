@@ -49,6 +49,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.Properties;
 
 import static org.apache.hudi.common.fs.FSUtils.getRelativePartitionPath;
 import static org.apache.hudi.common.util.ValidationUtils.checkState;
@@ -79,6 +80,7 @@ public class HoodieMergedLogRecordScanner extends AbstractHoodieLogRecordReader
   private long maxMemorySizeInBytes;
   // Stores the total time taken to perform reading and merging of log blocks
   private long totalTimeTakenToReadAndMergeBlocks;
+  private int emptyKeySuffix;
 
   @SuppressWarnings("unchecked")
   protected HoodieMergedLogRecordScanner(FileSystem fs, String basePath, List<String> logFilePaths, Schema readerSchema,
@@ -176,7 +178,7 @@ public class HoodieMergedLogRecordScanner extends AbstractHoodieLogRecordReader
       // NOTE: Record have to be cloned here to make sure if it holds low-level engine-specific
       //       payload pointing into a shared, mutable (underlying) buffer we get a clean copy of
       //       it since these records will be put into records(Map).
-      records.put(key, newRecord.copy());
+      records.put(key.equals(HoodieKey.EMPTY_RECORD_KEY) ? key + (emptyKeySuffix++) : key, newRecord.copy());
     }
   }
 

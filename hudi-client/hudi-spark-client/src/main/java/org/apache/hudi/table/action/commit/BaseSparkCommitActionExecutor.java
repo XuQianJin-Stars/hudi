@@ -44,6 +44,8 @@ import org.apache.hudi.exception.HoodieUpsertException;
 import org.apache.hudi.execution.SparkLazyInsertIterable;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.io.CreateHandleFactory;
+import org.apache.hudi.io.HoodieConcatHandle;
+import org.apache.hudi.io.HoodieAppendHandle;
 import org.apache.hudi.io.HoodieMergeHandle;
 import org.apache.hudi.io.HoodieMergeHandleFactory;
 import org.apache.hudi.keygen.BaseKeyGenerator;
@@ -327,6 +329,8 @@ public abstract class BaseSparkCommitActionExecutor<T> extends
         return handleInsert(binfo.fileIdPrefix, recordItr);
       } else if (btype.equals(BucketType.UPDATE)) {
         return handleUpdate(binfo.partitionPath, binfo.fileIdPrefix, recordItr);
+      } else if (btype.equals(BucketType.APPEND)) {
+        return handleAppend(binfo.partitionPath, binfo.fileIdPrefix, recordItr);
       } else {
         throw new HoodieUpsertException("Unknown bucketType " + btype + " for partition :" + partition);
       }
@@ -340,6 +344,20 @@ public abstract class BaseSparkCommitActionExecutor<T> extends
   protected Iterator<List<WriteStatus>> handleInsertPartition(String instantTime, Integer partition, Iterator recordItr,
                                                               Partitioner partitioner) {
     return handleUpsertPartition(instantTime, partition, recordItr, partitioner);
+  }
+
+  @SuppressWarnings("unchecked")
+  protected Iterator<List<WriteStatus>> handleAppend(String partitionPath, String fileId,
+                                                    Iterator<HoodieRecord<T>> recordItr) throws IOException {
+    // This is needed since sometimes some buckets are never picked in getPartition() and end up with 0 records
+    if (!recordItr.hasNext()) {
+      LOG.info("Empty partition with fileId => " + fileId);
+      return Collections.singletonList((List<WriteStatus>) Collections.EMPTY_LIST).iterator();
+    }
+    HoodieAppendHandle<?, ?, ?, ?> appendHandle = new HoodieAppendHandle<>(config, instantTime,
+        table, partitionPath, fileId, recordItr, taskContextSupplier);
+    appendHandle.doAppend();
+    return Collections.singletonList(appendHandle.close()).iterator();
   }
 
   @Override

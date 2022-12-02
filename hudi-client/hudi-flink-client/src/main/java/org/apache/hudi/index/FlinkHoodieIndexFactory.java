@@ -56,6 +56,8 @@ public final class FlinkHoodieIndexFactory {
         return new HoodieGlobalBloomIndex(config, ListBasedHoodieBloomIndexHelper.getInstance());
       case SIMPLE:
         return new HoodieSimpleIndex(config, Option.empty());
+      case NON_INDEX:
+        return new FlinkHoodieNonIndex(config);
       case GLOBAL_SIMPLE:
         return new HoodieGlobalSimpleIndex(config, Option.empty());
       case BUCKET:

@@ -60,6 +60,8 @@ public class HoodieCommitMetadata implements Serializable {
 
   protected WriteOperationType operationType = WriteOperationType.UNKNOWN;
 
+  protected Boolean isNeedLock = true;
+
   // for ser/deser
   public HoodieCommitMetadata() {
     this(false);
@@ -108,6 +110,14 @@ public class HoodieCommitMetadata implements Serializable {
 
   public void setCompacted(Boolean compacted) {
     this.compacted = compacted;
+  }
+
+  public Boolean getNeedLock() {
+    return isNeedLock;
+  }
+
+  public void setNeedLock(Boolean needLock) {
+    isNeedLock = needLock;
   }
 
   public HashMap<String, String> getFileIdAndRelativePaths() {

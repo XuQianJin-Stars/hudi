@@ -41,6 +41,7 @@ import org.apache.hudi.common.model.HoodieWriteStat.RuntimeStats;
 import org.apache.hudi.common.model.IOType;
 import org.apache.hudi.common.model.MetadataValues;
 import org.apache.hudi.common.table.log.AppendResult;
+import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.log.HoodieLogFormat.Writer;
 import org.apache.hudi.common.table.log.block.HoodieAvroDataBlock;
 import org.apache.hudi.common.table.log.block.HoodieDeleteBlock;
@@ -49,6 +50,8 @@ import org.apache.hudi.common.table.log.block.HoodieLogBlock;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock.HeaderMetadataType;
 import org.apache.hudi.common.table.log.block.HoodieParquetDataBlock;
 import org.apache.hudi.common.table.timeline.HoodieInstantTimeGenerator;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
+import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.view.TableFileSystemView.SliceView;
 import org.apache.hudi.common.util.DefaultSizeEstimator;
 import org.apache.hudi.common.util.Option;
@@ -165,12 +168,24 @@ public class HoodieAppendHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O
       String baseInstantTime;
       String baseFile = "";
       List<String> logFiles = new ArrayList<>();
+
+      Option<HoodieInstant> maxCompleteInstant = hoodieTable.getMetaClient().getActiveTimeline().getWriteTimeline()
+          .filterMorCompactionInstants().lastInstant();
+      if (maxCompleteInstant.isPresent()) {
+        if (fileSlice.isPresent()) {
+          baseInstantTime = fileSlice.get().getBaseInstantTime();
+        } else {
+          baseInstantTime = instantTime;
+        }
+      } else {
+        String instantTime = HoodieActiveTimeline.createNewInstantTime();
+        baseInstantTime = instantTime.substring(0, instantTime.length() - 9) + String.format("%09d", 0);
+      }
+
       if (fileSlice.isPresent()) {
-        baseInstantTime = fileSlice.get().getBaseInstantTime();
         baseFile = fileSlice.get().getBaseFile().map(BaseFile::getFileName).orElse("");
         logFiles = fileSlice.get().getLogFiles().map(HoodieLogFile::getFileName).collect(Collectors.toList());
       } else {
-        baseInstantTime = instantTime;
         // Handle log file only case. This is necessary for the concurrent clustering and writer case (e.g., consistent hashing bucket index).
         // NOTE: flink engine use instantTime to mark operation type, check BaseFlinkCommitActionExecutor::execute
         if (record.getCurrentLocation() != null && HoodieInstantTimeGenerator.isValidInstantTime(record.getCurrentLocation().getInstantTime())) {
@@ -178,7 +193,7 @@ public class HoodieAppendHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O
         }
         // This means there is no base data file, start appending to a new log file
         fileSlice = Option.of(new FileSlice(partitionPath, baseInstantTime, this.fileId));
-        LOG.info("New AppendHandle for partition :" + partitionPath);
+        LOG.info("New AppendHandle for partition :" + partitionPath + " baseInstantTime :" + baseInstantTime + " fileId :" + this.fileId);
       }
 
       // Prepare the first write status
@@ -207,6 +222,7 @@ public class HoodieAppendHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O
         // https://issues.apache.org/jira/browse/HUDI-1517
         createMarkerFile(partitionPath, FSUtils.makeBaseFileName(baseInstantTime, writeToken, fileId, hoodieTable.getBaseFileExtension()));
 
+        LOG.info("Init LogWriter for partition :" + partitionPath + " baseInstantTime :" + baseInstantTime + " fileId :" + this.fileId);
         this.writer = createLogWriter(fileSlice, baseInstantTime);
       } catch (Exception e) {
         LOG.error("Error in update task at commit " + instantTime, e);
@@ -538,6 +554,24 @@ public class HoodieAppendHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O
     return statuses;
   }
 
+  public Writer createLogWriter(Option<FileSlice> fileSlice, String baseCommitTime)
+      throws IOException {
+    Option<HoodieLogFile> latestLogFile = fileSlice.get().getLatestLogFile();
+
+    return HoodieLogFormat.newWriterBuilder()
+        .onParentPath(FSUtils.getPartitionPath(hoodieTable.getMetaClient().getBasePath(), partitionPath))
+        .withFileId(fileId)
+        .overBaseCommit(baseCommitTime)
+        .withLogVersion(latestLogFile.map(HoodieLogFile::getLogVersion).orElse(HoodieLogFile.LOGFILE_BASE_VERSION))
+        .withFileSize(latestLogFile.map(HoodieLogFile::getFileSize).orElse(0L))
+        .withSizeThreshold(config.getLogFileMaxSize())
+        .withFs(fs)
+        .withRolloverLogWriteToken(writeToken)
+        .withLogWriteToken(latestLogFile.map(x -> FSUtils.getWriteTokenFromLogPath(x.getPath())).orElse(writeToken))
+        .withLogSuffix(config.getWriteLogSuffix())
+        .withFileExtension(HoodieLogFile.DELTA_EXTENSION).build();
+  }
+
   /**
    * Whether there is need to update the record location.
    */
@@ -623,6 +657,7 @@ public class HoodieAppendHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O
                                          List<HoodieRecord> records,
                                          Map<HeaderMetadataType, String> header,
                                          String keyField) {
+    LOG.info("getBlock recordList's size => " + recordList.size());
     switch (logDataBlockFormat) {
       case AVRO_DATA_BLOCK:
         return new HoodieAvroDataBlock(records, header, keyField);

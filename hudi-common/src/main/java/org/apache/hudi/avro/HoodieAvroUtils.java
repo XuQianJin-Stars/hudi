@@ -75,6 +75,8 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -532,6 +534,11 @@ public class HoodieAvroUtils {
   public static String getNestedFieldValAsString(GenericRecord record, String fieldName, boolean returnNullIfNotFound, boolean consistentLogicalTimestampEnabled) {
     Object obj = getNestedFieldVal(record, fieldName, returnNullIfNotFound, consistentLogicalTimestampEnabled);
     return StringUtils.objToString(obj);
+  }
+
+  public static Object getNestedFieldValAsString(GenericRecord record, String fieldName) {
+    Object obj = getNestedFieldVal(record, fieldName, true, false);
+    return obj == null ? "" : StringUtils.objToString(obj);
   }
 
   /**

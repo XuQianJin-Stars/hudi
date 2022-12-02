@@ -26,6 +26,7 @@ import org.apache.hudi.keygen.KeyGenUtils;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -71,7 +72,7 @@ public class TestBucketIdentifier {
     int[] ids = {0, 4, 8, 16, 32, 64, 128, 256, 512, 1000, 1024, 4096, 10000, 100000};
     for (int id : ids) {
       String bucketIdStr = BucketIdentifier.bucketIdStr(id);
-      String fileId = BucketIdentifier.newBucketFileIdPrefix(bucketIdStr);
+      String fileId = BucketIdentifier.newBucketFileIdPrefix(bucketIdStr, "");
       assert BucketIdentifier.bucketIdFromFileId(fileId) == id;
     }
   }
@@ -83,7 +84,7 @@ public class TestBucketIdentifier {
     GenericRecord record = getRecord();
     HoodieRecord hoodieRecord = new HoodieAvroRecord(
         new HoodieKey(KeyGenUtils.getRecordKey(record, recordKeyField, false), ""), null);
-    int bucketId = BucketIdentifier.getBucketId(hoodieRecord, indexKeyField, 8);
+    int bucketId = BucketIdentifier.getBucketId(hoodieRecord.getKey(), indexKeyField, 8);
     assert bucketId == BucketIdentifier.getBucketId(
         Arrays.asList(record.get(indexKeyField).toString()), 8);
   }
@@ -95,7 +96,7 @@ public class TestBucketIdentifier {
     GenericRecord record = getRecord();
     HoodieRecord hoodieRecord = new HoodieAvroRecord(
         new HoodieKey(KeyGenUtils.getRecordKey(record, recordKeyField, false), ""), null);
-    int bucketId = BucketIdentifier.getBucketId(hoodieRecord, indexKeyField, 8);
+    int bucketId = BucketIdentifier.getBucketId(hoodieRecord.getKey(), indexKeyField, 8);
     assert bucketId == BucketIdentifier.getBucketId(
         Arrays.asList(record.get(indexKeyField).toString()), 8);
   }

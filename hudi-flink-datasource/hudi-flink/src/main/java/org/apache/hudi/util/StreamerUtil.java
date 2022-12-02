@@ -18,19 +18,36 @@
 
 package org.apache.hudi.util;
 
+import org.apache.hudi.client.FlinkTaskContextSupplier;
+import org.apache.hudi.client.HoodieFlinkWriteClient;
+import org.apache.hudi.client.common.HoodieFlinkEngineContext;
+import org.apache.hudi.client.transaction.lock.FileSystemBasedLockProvider;
 import org.apache.hudi.common.config.DFSPropertiesConfiguration;
+import org.apache.hudi.common.config.HoodieMetadataConfig;
+import org.apache.hudi.common.config.SerializableConfiguration;
 import org.apache.hudi.common.config.TypedProperties;
+import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.fs.FSUtils;
+import org.apache.hudi.common.model.HoodieCleaningPolicy;
+import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
 import org.apache.hudi.common.table.log.HoodieLogFormat;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
+import org.apache.hudi.common.table.view.FileSystemViewStorageConfig;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.StringUtils;
-import org.apache.hudi.common.util.ValidationUtils;
+import org.apache.hudi.config.HoodieArchivalConfig;
+import org.apache.hudi.config.HoodieCleanConfig;
+import org.apache.hudi.config.HoodieClusteringConfig;
+import org.apache.hudi.config.HoodieCompactionConfig;
+import org.apache.hudi.config.HoodieLockConfig;
+import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.hudi.config.HoodieMemoryConfig;
+import org.apache.hudi.config.HoodieStorageConfig;
 import org.apache.hudi.config.HoodiePayloadConfig;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.configuration.HadoopConfigurations;
@@ -42,8 +59,11 @@ import org.apache.hudi.schema.FilebasedSchemaProvider;
 import org.apache.hudi.sink.transform.ChainedTransformer;
 import org.apache.hudi.sink.transform.Transformer;
 import org.apache.hudi.streamer.FlinkStreamerConfig;
+import org.apache.hudi.table.action.cluster.ClusteringPlanPartitionFilterMode;
+import org.apache.hudi.table.action.compact.CompactionTriggerStrategy;
 
 import org.apache.avro.Schema;
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.util.Preconditions;
@@ -64,6 +84,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 
 import static org.apache.hudi.common.model.HoodieFileFormat.HOODIE_LOG;
@@ -124,6 +145,104 @@ public class StreamerUtil {
     }
 
     return conf;
+  }
+
+  /**
+   * Mainly used for tests.
+   */
+  public static HoodieWriteConfig getHoodieClientConfig(Configuration conf) {
+    return getHoodieClientConfig(conf, false, false);
+  }
+
+  public static HoodieWriteConfig getHoodieClientConfig(Configuration conf, boolean loadFsViewStorageConfig) {
+    return getHoodieClientConfig(conf, false, loadFsViewStorageConfig);
+  }
+
+  public static HoodieWriteConfig getHoodieClientConfig(
+      Configuration conf,
+      boolean enableEmbeddedTimelineService,
+      boolean loadFsViewStorageConfig) {
+    HoodieWriteConfig.Builder builder =
+        HoodieWriteConfig.newBuilder()
+            .withEngineType(EngineType.FLINK)
+            .withPath(conf.getString(FlinkOptions.PATH))
+            .combineInput(conf.getBoolean(FlinkOptions.PRE_COMBINE), true)
+            .withWriteLogSuffix(conf.getString(FlinkOptions.WRITE_LOG_SUFFIX))
+            .withMergeAllowDuplicateOnInserts(OptionsResolver.insertClustering(conf))
+            .withClusteringConfig(
+                HoodieClusteringConfig.newBuilder()
+                    .withAsyncClustering(conf.getBoolean(FlinkOptions.CLUSTERING_ASYNC_ENABLED))
+                    .withClusteringPlanStrategyClass(conf.getString(FlinkOptions.CLUSTERING_PLAN_STRATEGY_CLASS))
+                    .withClusteringPlanPartitionFilterMode(
+                        ClusteringPlanPartitionFilterMode.valueOf(conf.getString(FlinkOptions.CLUSTERING_PLAN_PARTITION_FILTER_MODE_NAME)))
+                    .withClusteringTargetPartitions(conf.getInteger(FlinkOptions.CLUSTERING_TARGET_PARTITIONS))
+                    .withClusteringMaxNumGroups(conf.getInteger(FlinkOptions.CLUSTERING_MAX_NUM_GROUPS))
+                    .withClusteringTargetFileMaxBytes(conf.getLong(FlinkOptions.CLUSTERING_PLAN_STRATEGY_TARGET_FILE_MAX_BYTES))
+                    .withClusteringPlanSmallFileLimit(conf.getLong(FlinkOptions.CLUSTERING_PLAN_STRATEGY_SMALL_FILE_LIMIT) * 1024 * 1024L)
+                    .withClusteringSkipPartitionsFromLatest(conf.getInteger(FlinkOptions.CLUSTERING_PLAN_STRATEGY_SKIP_PARTITIONS_FROM_LATEST))
+                    .withAsyncClusteringMaxCommits(conf.getInteger(FlinkOptions.CLUSTERING_DELTA_COMMITS))
+                    .build())
+            .withCleanConfig(HoodieCleanConfig.newBuilder()
+                .withAsyncClean(conf.getBoolean(FlinkOptions.CLEAN_ASYNC_ENABLED))
+                .retainCommits(conf.getInteger(FlinkOptions.CLEAN_RETAIN_COMMITS))
+                .cleanerNumHoursRetained(conf.getInteger(FlinkOptions.CLEAN_RETAIN_HOURS))
+                .retainFileVersions(conf.getInteger(FlinkOptions.CLEAN_RETAIN_FILE_VERSIONS))
+                // override and hardcode to 20,
+                // actually Flink cleaning is always with parallelism 1 now
+                .withCleanerParallelism(20)
+                .withCleanerPolicy(HoodieCleaningPolicy.valueOf(conf.getString(FlinkOptions.CLEAN_POLICY)))
+                .build())
+            .withArchivalConfig(HoodieArchivalConfig.newBuilder()
+                .archiveCommitsWith(conf.getInteger(FlinkOptions.ARCHIVE_MIN_COMMITS), conf.getInteger(FlinkOptions.ARCHIVE_MAX_COMMITS))
+                .build())
+            .withCompactionConfig(HoodieCompactionConfig.newBuilder()
+                .withTargetIOPerCompactionInMB(conf.getLong(FlinkOptions.COMPACTION_TARGET_IO))
+                .withInlineCompactionTriggerStrategy(
+                    CompactionTriggerStrategy.valueOf(conf.getString(FlinkOptions.COMPACTION_TRIGGER_STRATEGY).toUpperCase(Locale.ROOT)))
+                .withMaxNumDeltaCommitsBeforeCompaction(conf.getInteger(FlinkOptions.COMPACTION_DELTA_COMMITS))
+                .withMaxDeltaSecondsBeforeCompaction(conf.getInteger(FlinkOptions.COMPACTION_DELTA_SECONDS))
+                .build())
+            .withMemoryConfig(
+                HoodieMemoryConfig.newBuilder()
+                    .withMaxMemoryMaxSize(
+                        conf.getInteger(FlinkOptions.WRITE_MERGE_MAX_MEMORY) * 1024 * 1024L,
+                        conf.getInteger(FlinkOptions.COMPACTION_MAX_MEMORY) * 1024 * 1024L
+                    ).build())
+            .forTable(conf.getString(FlinkOptions.TABLE_NAME))
+            .withStorageConfig(HoodieStorageConfig.newBuilder()
+                .logFileDataBlockMaxSize(conf.getInteger(FlinkOptions.WRITE_LOG_BLOCK_SIZE) * 1024 * 1024)
+                .logFileMaxSize(conf.getLong(FlinkOptions.WRITE_LOG_MAX_SIZE) * 1024 * 1024)
+                .parquetBlockSize(conf.getInteger(FlinkOptions.WRITE_PARQUET_BLOCK_SIZE) * 1024 * 1024)
+                .parquetPageSize(conf.getInteger(FlinkOptions.WRITE_PARQUET_PAGE_SIZE) * 1024 * 1024)
+                .parquetMaxFileSize(conf.getInteger(FlinkOptions.WRITE_PARQUET_MAX_FILE_SIZE) * 1024 * 1024L)
+                .build())
+            .withMetadataConfig(HoodieMetadataConfig.newBuilder()
+                .enable(conf.getBoolean(FlinkOptions.METADATA_ENABLED))
+                .withMaxNumDeltaCommitsBeforeCompaction(conf.getInteger(FlinkOptions.METADATA_COMPACTION_DELTA_COMMITS))
+                .build())
+            .withLockConfig(HoodieLockConfig.newBuilder()
+                .withLockProvider(FileSystemBasedLockProvider.class)
+                .withLockWaitTimeInMillis(2000L) // 2s
+                .withFileSystemLockExpire(1) // 1 minute
+                .withClientNumRetries(30)
+                .withFileSystemLockPath(StreamerUtil.getAuxiliaryPath(conf))
+                .build())
+            .withPayloadConfig(getPayloadConfig(conf))
+            .withEmbeddedTimelineServerEnabled(enableEmbeddedTimelineService)
+            .withEmbeddedTimelineServerReuseEnabled(true) // make write client embedded timeline service singleton
+            .withAutoCommit(false)
+            .withAllowOperationMetadataField(conf.getBoolean(FlinkOptions.CHANGELOG_ENABLED))
+            .withProps(flinkConf2TypedProperties(conf))
+            .withSchema(getSourceSchema(conf).toString());
+
+    // do not configure cleaning strategy as LAZY until multi-writers is supported.
+    HoodieWriteConfig writeConfig = builder.build();
+    if (loadFsViewStorageConfig) {
+      // do not use the builder to give a change for recovering the original fs view storage config
+      FileSystemViewStorageConfig viewStorageConfig = ViewStorageProperties.loadFromProperties(conf.getString(FlinkOptions.PATH), conf);
+      writeConfig.setViewStorageConfig(viewStorageConfig);
+    }
+    return writeConfig;
   }
 
   /**
@@ -219,7 +338,10 @@ public class StreamerUtil {
     // Hadoop FileSystem
     FileSystem fs = FSUtils.getFs(basePath, hadoopConf);
     try {
-      return fs.exists(new Path(basePath, HoodieTableMetaClient.METAFOLDER_NAME));
+      Path metaPath = new Path(basePath, HoodieTableMetaClient.METAFOLDER_NAME);
+      Path cfgPath = new Path(metaPath, HoodieTableConfig.HOODIE_PROPERTIES_FILE);
+      Path backupCfgPath = new Path(metaPath, HoodieTableConfig.HOODIE_PROPERTIES_FILE_BACKUP);
+      return fs.exists(metaPath) && (fs.exists(cfgPath) || fs.exists(backupCfgPath));
     } catch (IOException e) {
       throw new HoodieException("Error while checking whether table exists under path:" + basePath, e);
     }
@@ -289,15 +411,18 @@ public class StreamerUtil {
     try {
       long high = HoodieActiveTimeline.parseDateFromInstantTime(highVal).getTime();
       long low = HoodieActiveTimeline.parseDateFromInstantTime(lowVal).getTime();
-      ValidationUtils.checkArgument(high > low,
-          "Instant [" + highVal + "] should have newer timestamp than instant [" + lowVal + "]");
-      long median = low + (high - low) / 2;
-      final String instantTime = HoodieActiveTimeline.formatDate(new Date(median));
-      if (HoodieTimeline.compareTimestamps(lowVal, HoodieTimeline.GREATER_THAN_OR_EQUALS, instantTime)
-          || HoodieTimeline.compareTimestamps(highVal, HoodieTimeline.LESSER_THAN_OR_EQUALS, instantTime)) {
-        return Option.empty();
+      if (high > low) {
+        long median = low + (high - low) / 2;
+        final String instantTime = HoodieActiveTimeline.formatDate(new Date(median));
+        if (HoodieTimeline.compareTimestamps(lowVal, HoodieTimeline.GREATER_THAN_OR_EQUALS, instantTime)
+            || HoodieTimeline.compareTimestamps(highVal, HoodieTimeline.LESSER_THAN_OR_EQUALS, instantTime)) {
+          return Option.empty();
+        }
+        return Option.of(instantTime);
+      } else {
+        LOG.warn("Instant [" + highVal + "] should have newer timestamp than instant [" + lowVal + "]");
+        return Option.of(HoodieActiveTimeline.createNewInstantTime());
       }
-      return Option.of(instantTime);
     } catch (ParseException e) {
       throw new HoodieException("Get median instant time with interval [" + lowVal + ", " + highVal + "] error", e);
     }
