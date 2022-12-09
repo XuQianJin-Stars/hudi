@@ -18,6 +18,7 @@
 
 package org.apache.hudi.io;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.engine.TaskContextSupplier;
 import org.apache.hudi.common.fs.FSUtils;
@@ -450,12 +451,7 @@ public class HoodieMergeHandle<T extends HoodieRecordPayload, I, K, O> extends H
       return;
     }
 
-    // Fast verify the integrity of the parquet file.
-    // only check the readable of parquet metadata.
-    final String extension = FSUtils.getFileExtension(newFilePath.toString());
-    if (PARQUET.getFileExtension().equals(extension)) {
-      new ParquetUtils().readMetadata(hoodieTable.getHadoopConf(), newFilePath);
-    }
+    IOUtils.checkParquetFileVaid(hoodieTable.getHadoopConf(), newFilePath);
 
     long oldNumWrites = 0;
     try {
