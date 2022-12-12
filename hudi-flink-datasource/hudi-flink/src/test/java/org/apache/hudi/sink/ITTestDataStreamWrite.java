@@ -18,7 +18,6 @@
 
 package org.apache.hudi.sink;
 
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hudi.avro.HoodieAvroUtils;
@@ -663,7 +662,7 @@ public class ITTestDataStreamWrite extends TestLogger {
 
     String preCombineFields = "_ts";
     List<HoodieAvroRecord> records = new ArrayList<>();
-    Schema avroSchema = new Schema.Parser().parse(SCHEMA);
+    org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(SCHEMA);
     for (int i = 1; i <= 100; i++) {
       long ts = System.currentTimeMillis();
       GenericRecord row1 = new GenericData.Record(avroSchema);
@@ -707,7 +706,7 @@ public class ITTestDataStreamWrite extends TestLogger {
         + "}";
     String preCombineFields = "_ts1:fa|_ts2:fb";
     List<HoodieAvroRecord> records = new ArrayList<>();
-    Schema avroSchema = new Schema.Parser().parse(schema);
+    org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(schema);
     for (int i = 1; i <= 1000; i++) {
       long ts = System.currentTimeMillis();
       GenericRecord row1 = new GenericData.Record(avroSchema);

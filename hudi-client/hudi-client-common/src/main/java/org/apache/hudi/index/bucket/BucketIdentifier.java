@@ -41,7 +41,7 @@ public class BucketIdentifier implements Serializable {
   }
 
   public static int getBucketId(HoodieKey hoodieKey, String indexKeyFields, int numBuckets) {
-    return (getHashKeys(hoodieKey.getRecordKey(), indexKeyFields).hashCode() & Integer.MAX_VALUE) % numBuckets;
+    return (getHashKeys(hoodieKey, indexKeyFields).hashCode() & Integer.MAX_VALUE) % numBuckets;
   }
 
   public static int getBucketId(HoodieKey hoodieKey, List<String> indexKeyFields, int numBuckets) {
@@ -56,6 +56,10 @@ public class BucketIdentifier implements Serializable {
     return (hashKeyFields.hashCode() & Integer.MAX_VALUE) % numBuckets;
   }
 
+  public static List<String> getHashKeys(HoodieKey hoodieKey, String indexKeyFields) {
+    return getHashKeys(hoodieKey.getRecordKey(), indexKeyFields);
+  }
+
   protected static List<String> getHashKeys(String recordKey, String indexKeyFields) {
     return !recordKey.contains(":") ? Collections.singletonList(recordKey) :
         getHashKeysUsingIndexFields(recordKey, Arrays.asList(indexKeyFields.split(",")));
@@ -68,6 +72,10 @@ public class BucketIdentifier implements Serializable {
 
   private static List<String> getHashKeysUsingIndexFields(String recordKey, List<String> indexKeyFields) {
     return Arrays.asList(KeyGenUtils.extractRecordKeysByFields(recordKey, indexKeyFields));
+  }
+
+  public static String partitionBucketIdStr(String partition, int bucketId) {
+    return String.format("%s_%s", partition, bucketIdStr(bucketId));
   }
 
   public static int bucketIdFromFileId(String fileId) {
