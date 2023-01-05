@@ -169,7 +169,7 @@ public class PartialUpdateAvroPayload extends OverwriteNonDefaultsWithLatestAvro
     }
   }
 
-  /**StreamWriteFunction
+  /**
    * Merges the given disorder records with metadata.
    *
    * @param schema         The record schema
