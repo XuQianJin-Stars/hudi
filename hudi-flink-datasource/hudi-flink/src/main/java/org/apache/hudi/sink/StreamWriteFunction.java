@@ -29,7 +29,6 @@ import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.util.ObjectSizeCalculator;
 import org.apache.hudi.common.util.ValidationUtils;
-import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.index.HoodieIndex;
@@ -56,8 +55,6 @@ import java.util.Properties;
 import java.util.Random;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
-
-import static org.apache.hudi.util.StreamerUtil.getHoodieClientConfig;
 
 /**
  * Sink function to write the data to the underneath filesystem.
