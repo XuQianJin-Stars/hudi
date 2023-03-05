@@ -47,7 +47,7 @@ public class HoodieMetricsConfig extends HoodieConfig {
 
   public static final ConfigProperty<Boolean> TURN_METRICS_ON = ConfigProperty
       .key(METRIC_PREFIX + ".on")
-      .defaultValue(true)
+      .defaultValue(false)
       .sinceVersion("0.5.0")
       .withDocumentation("Turn on/off metrics reporting. off by default.");
 

@@ -125,7 +125,7 @@
     <spark2.version>2.4.4</spark2.version>
     <spark3.version>3.3.0</spark3.version>
     <sparkbundle.version></sparkbundle.version>
-    <spark.groupId>com.tencent.spark</spark.groupId>
+    <spark.groupId>org.apache.spark</spark.groupId>
     <flink1.15.version>1.15.1</flink1.15.version>
     <flink1.14.version>1.14.5</flink1.14.version>
     <flink1.13.version>1.13.6</flink1.13.version>
@@ -167,7 +167,7 @@
     <thrift.version>0.12.0</thrift.version>
     <jetty.version>9.4.15.v20190215</jetty.version>
     <htrace.version>3.1.0-incubating</htrace.version>
-    <hbase.version>2.4.9-tq-0.01</hbase.version>
+    <hbase.version>2.4.9</hbase.version>
     <codehaus-jackson.version>1.9.13</codehaus-jackson.version>
     <h2.version>1.4.199</h2.version>
     <awaitility.version>3.1.2</awaitility.version>
@@ -2178,19 +2178,5 @@
       </repositories>
     </profile>
   </profiles>
-
-  <distributionManagement>
-    <repository>
-      <id>tianqiong-releases</id>
-      <name>Tianqiong Release Repository</name>
-      <url>https://mirrors.tencent.com/repository/maven/tianqiong-releases</url>
-    </repository>
-
-    <snapshotRepository>
-      <id>tianqiong-snapshots</id>
-      <name>Tianqiong Snapshots Repository</name>
-      <url>https://mirrors.tencent.com/repository/maven/tianqiong-snapshots</url>
-    </snapshotRepository>
-  </distributionManagement>
 
 </project>
