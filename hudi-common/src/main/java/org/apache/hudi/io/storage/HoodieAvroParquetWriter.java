@@ -39,6 +39,7 @@ public class HoodieAvroParquetWriter
     extends HoodieBaseParquetWriter<IndexedRecord>
     implements HoodieAvroFileWriter {
 
+  private final Path file;
   private final String fileName;
   private final String instantTime;
   private final TaskContextSupplier taskContextSupplier;
@@ -52,6 +53,7 @@ public class HoodieAvroParquetWriter
                                  TaskContextSupplier taskContextSupplier,
                                  boolean populateMetaFields) throws IOException {
     super(file, (HoodieParquetConfig) parquetConfig);
+    this.file = file;
     this.fileName = file.getName();
     this.writeSupport = parquetConfig.getWriteSupport();
     this.instantTime = instantTime;
@@ -82,5 +84,12 @@ public class HoodieAvroParquetWriter
   @Override
   public void close() throws IOException {
     super.close();
+  }
+
+  @Override
+  public WriteResult complete() throws IOException {
+    WriteResult result = new WriteResult(file.toString(), getWrittenRecordCount(), getDataSize());
+    close();
+    return result;
   }
 }

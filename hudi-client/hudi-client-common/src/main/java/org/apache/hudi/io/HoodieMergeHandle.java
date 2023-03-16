@@ -46,6 +46,7 @@ import org.apache.hudi.io.storage.HoodieFileReader;
 import org.apache.hudi.io.storage.HoodieFileReaderFactory;
 import org.apache.hudi.io.storage.HoodieFileWriter;
 import org.apache.hudi.io.storage.HoodieFileWriterFactory;
+import org.apache.hudi.io.storage.WriteResult;
 import org.apache.hudi.keygen.BaseKeyGenerator;
 import org.apache.hudi.table.HoodieTable;
 
@@ -411,12 +412,13 @@ public class HoodieMergeHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O>
       keyToNewRecords = null;
       writtenRecordKeys = null;
 
+      WriteResult writeResult = null;
       if (fileWriter != null) {
-        fileWriter.close();
+        writeResult = fileWriter.complete();
         fileWriter = null;
       }
 
-      long fileSizeInBytes = FSUtils.getFileSize(fs, newFilePath);
+      long fileSizeInBytes = writeResult != null ? writeResult.getByteSizeWritten() : FSUtils.getFileSize(fs, newFilePath);
       HoodieWriteStat stat = writeStatus.getStat();
 
       stat.setTotalWriteBytes(fileSizeInBytes);

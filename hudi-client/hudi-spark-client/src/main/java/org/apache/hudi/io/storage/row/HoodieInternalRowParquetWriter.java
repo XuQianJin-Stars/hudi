@@ -25,6 +25,7 @@ import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.unsafe.types.UTF8String;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Parquet's impl of {@link HoodieInternalRowFileWriter} to write {@link InternalRow}s.
@@ -33,6 +34,7 @@ public class HoodieInternalRowParquetWriter extends HoodieBaseParquetWriter<Inte
     implements HoodieInternalRowFileWriter {
 
   private final HoodieRowParquetWriteSupport writeSupport;
+  private final AtomicLong recordsWritten = new AtomicLong(0);
 
   public HoodieInternalRowParquetWriter(Path file, HoodieParquetConfig<HoodieRowParquetWriteSupport> parquetConfig)
       throws IOException {
@@ -45,10 +47,24 @@ public class HoodieInternalRowParquetWriter extends HoodieBaseParquetWriter<Inte
   public void writeRow(UTF8String key, InternalRow row) throws IOException {
     super.write(row);
     writeSupport.add(key);
+    recordsWritten.incrementAndGet();
   }
 
   @Override
   public void writeRow(InternalRow row) throws IOException {
     super.write(row);
+    recordsWritten.incrementAndGet();
+  }
+
+  @Override
+  public void close() throws IOException {
+    super.close();
+  }
+
+  @Override
+  public WriteResult complete() throws IOException {
+    WriteResult result = new WriteResult(file.toString(), recordsWritten.get(), getDataSize());
+    close();
+    return result;
   }
 }

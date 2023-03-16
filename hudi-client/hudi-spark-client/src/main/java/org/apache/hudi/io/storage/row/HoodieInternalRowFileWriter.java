@@ -18,6 +18,8 @@
 
 package org.apache.hudi.io.storage.row;
 
+import org.apache.hudi.io.storage.WriteResult;
+
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.unsafe.types.UTF8String;
 
@@ -51,4 +53,6 @@ public interface HoodieInternalRowFileWriter {
    * Closes the {@link HoodieInternalRowFileWriter} and may not take in any more writes.
    */
   void close() throws IOException;
+
+  WriteResult complete() throws IOException;
 }

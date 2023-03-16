@@ -31,6 +31,7 @@ import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.HoodieInsertException;
 import org.apache.hudi.hadoop.CachingPath;
+import org.apache.hudi.io.storage.WriteResult;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.marker.WriteMarkersFactory;
 
@@ -220,7 +221,7 @@ public class HoodieRowCreateHandle implements Serializable {
    * @return the {@link HoodieInternalWriteStatus} containing the stats and status of the writes to this handle.
    */
   public HoodieInternalWriteStatus close() throws IOException {
-    fileWriter.close();
+    WriteResult writeResult = fileWriter.complete();
     HoodieWriteStat stat = writeStatus.getStat();
     stat.setPartitionPath(partitionPath);
     stat.setNumWrites(writeStatus.getTotalRecords());
@@ -229,7 +230,7 @@ public class HoodieRowCreateHandle implements Serializable {
     stat.setPrevCommit(HoodieWriteStat.NULL_COMMIT);
     stat.setFileId(fileId);
     stat.setPath(new Path(writeConfig.getBasePath()), path);
-    long fileSizeInBytes = FSUtils.getFileSize(table.getMetaClient().getFs(), path);
+    long fileSizeInBytes = writeResult.getByteSizeWritten();
     stat.setTotalWriteBytes(fileSizeInBytes);
     stat.setFileSizeInBytes(fileSizeInBytes);
     stat.setTotalWriteErrors(writeStatus.getFailedRowsSize());

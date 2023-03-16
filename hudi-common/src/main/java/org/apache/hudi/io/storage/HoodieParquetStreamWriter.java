@@ -70,6 +70,14 @@ public class HoodieParquetStreamWriter implements HoodieAvroFileWriter, AutoClos
   }
 
   @Override
+  public WriteResult complete() throws IOException {
+    close();
+
+    // empty result cause there are no column stats
+    return new WriteResult("", 0L, 0L);
+  }
+
+  @Override
   public void writeAvroWithMetadata(HoodieKey key, IndexedRecord avroRecord) throws IOException {
     // TODO support populating the metadata
     this.writeAvro(key.getRecordKey(), avroRecord);

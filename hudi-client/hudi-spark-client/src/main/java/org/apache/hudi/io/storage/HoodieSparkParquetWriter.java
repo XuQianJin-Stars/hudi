@@ -89,6 +89,14 @@ public class HoodieSparkParquetWriter extends HoodieBaseParquetWriter<InternalRo
     super.close();
   }
 
+  @Override
+  public WriteResult complete() throws IOException {
+    close();
+
+    // empty result cause there are no column stats
+    return new WriteResult("", getWrittenRecordCount(), getDataSize());
+  }
+
   protected void updateRecordMetadata(InternalRow row,
                                       UTF8String recordKey,
                                       String partitionPath,

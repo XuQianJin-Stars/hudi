@@ -18,6 +18,8 @@
 
 package org.apache.hudi.io.storage.row;
 
+import org.apache.hudi.io.storage.WriteResult;
+
 import org.apache.flink.table.data.RowData;
 
 import java.io.IOException;
@@ -50,4 +52,6 @@ public interface HoodieRowDataFileWriter {
    * Closes the {@link HoodieRowDataFileWriter} and may not take in any more writes.
    */
   void close() throws IOException;
+
+  WriteResult complete() throws IOException;
 }

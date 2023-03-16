@@ -21,6 +21,7 @@ package org.apache.hudi.io.storage.row;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.fs.HoodieWrapperFileSystem;
 import org.apache.hudi.io.storage.HoodieParquetConfig;
+import org.apache.hudi.io.storage.WriteResult;
 
 import org.apache.flink.table.data.RowData;
 import org.apache.hadoop.fs.Path;
@@ -28,6 +29,7 @@ import org.apache.parquet.hadoop.ParquetFileWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Parquet's impl of {@link HoodieRowDataFileWriter} to write {@link RowData}s.
@@ -35,10 +37,12 @@ import java.io.IOException;
 public class HoodieRowDataParquetWriter extends ParquetWriter<RowData>
     implements HoodieRowDataFileWriter {
 
+  private final AtomicLong writtenRecordCount = new AtomicLong(0);
+
+  private final HoodieRowDataParquetWriteSupport writeSupport;
   private final Path file;
   private final HoodieWrapperFileSystem fs;
   private final long maxFileSize;
-  private final HoodieRowDataParquetWriteSupport writeSupport;
 
   public HoodieRowDataParquetWriter(Path file, HoodieParquetConfig<HoodieRowDataParquetWriteSupport> parquetConfig)
       throws IOException {
@@ -69,10 +73,22 @@ public class HoodieRowDataParquetWriter extends ParquetWriter<RowData>
   @Override
   public void writeRow(RowData row) throws IOException {
     super.write(row);
+    writtenRecordCount.incrementAndGet();
   }
 
   @Override
   public void close() throws IOException {
     super.close();
+  }
+
+  @Override
+  public WriteResult complete() throws IOException {
+    WriteResult result = new WriteResult(file.toString(), getWrittenRecordCount(), getDataSize());
+    close();
+    return result;
+  }
+
+  protected long getWrittenRecordCount() {
+    return writtenRecordCount.get();
   }
 }

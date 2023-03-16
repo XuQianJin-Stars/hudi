@@ -74,6 +74,14 @@ public class HoodieSparkParquetStreamWriter implements HoodieSparkFileWriter, Au
     writer.close();
   }
 
+  @Override
+  public WriteResult complete() throws IOException {
+    close();
+
+    // empty result cause there are no column stats
+    return new WriteResult("", 0L, 0L);
+  }
+
   private static class Builder<T> extends ParquetWriter.Builder<T, Builder<T>> {
     private final WriteSupport<T> writeSupport;
 

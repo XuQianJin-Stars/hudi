@@ -42,4 +42,6 @@ public interface HoodieFileWriter {
   default void write(String recordKey, HoodieRecord record, Schema schema) throws IOException {
     write(recordKey, record, schema, new Properties());
   }
+
+  WriteResult complete() throws IOException;
 }

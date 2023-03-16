@@ -162,4 +162,11 @@ public class HoodieAvroOrcWriter implements HoodieAvroFileWriter, Closeable {
 
     writer.close();
   }
+
+  @Override
+  public WriteResult complete() throws IOException {
+    close();
+
+    return new WriteResult(file.toString(), writer.getNumberOfRows(), writer.getRawDataSize());
+  }
 }

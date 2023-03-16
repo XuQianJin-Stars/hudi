@@ -185,4 +185,12 @@ public class HoodieAvroHFileWriter
     writer.close();
     writer = null;
   }
+
+  @Override
+  public WriteResult complete() throws IOException {
+    close();
+
+    // empty result cause there are no column stats
+    return new WriteResult(file.toString(), 0L, 0L);
+  }
 }
